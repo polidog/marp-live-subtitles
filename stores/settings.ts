@@ -1,5 +1,6 @@
 /** 設定の永続化 (spec §27 / spec2 §31-§33)。API Key は content script へ渡さないため別アイテムにする。 */
 import { storage } from "wxt/utils/storage";
+import { isStorageAvailable } from "../lib/extension";
 import { DEFAULT_TRANSLATION_MODEL } from "../lib/translation/provider";
 import type { Settings } from "../types";
 
@@ -40,6 +41,8 @@ export const apiKeyItem = storage.defineItem<string>("local:geminiApiKey", {
 });
 
 export async function getSettings(): Promise<Settings> {
+  // 孤児 content script では chrome.storage が消えている。既定値で描き続ける。
+  if (!isStorageAvailable()) return DEFAULT_SETTINGS;
   return { ...DEFAULT_SETTINGS, ...(await settingsItem.getValue()) };
 }
 
@@ -51,5 +54,6 @@ export async function patchSettings(patch: Partial<Settings>): Promise<Settings>
 
 /** 設定変更を購読する。解除関数を返す。 */
 export function watchSettings(cb: (s: Settings) => void): () => void {
+  if (!isStorageAvailable()) return () => {};
   return settingsItem.watch((v) => cb({ ...DEFAULT_SETTINGS, ...(v ?? undefined) }));
 }

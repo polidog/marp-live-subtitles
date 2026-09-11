@@ -1,4 +1,5 @@
 /** spec §30 / spec2 §16 — Extension 内部通信 */
+import { isExtensionAlive } from "../extension";
 import type {
   TranscriptEvent,
   TranslationError,
@@ -46,7 +47,13 @@ export type Envelope = ExtensionMessage & { target: Target };
 
 /** 宛先付きで送る。受信側がいない場合のエラーは握りつぶす。 */
 export function send(target: Target, msg: ExtensionMessage): void {
-  void chrome.runtime.sendMessage({ ...msg, target } as Envelope).catch(() => {});
+  // 孤児 content script では sendMessage が同期的に throw するので try で囲う
+  if (!isExtensionAlive()) return;
+  try {
+    void chrome.runtime.sendMessage({ ...msg, target } as Envelope).catch(() => {});
+  } catch {
+    /* 拡張リロードで context が失効した */
+  }
 }
 
 export function sendToTab(tabId: number, msg: ExtensionMessage): void {
@@ -73,6 +80,17 @@ export function onMessage(
     if (!env || typeof env !== "object" || env.target !== target) return;
     return handler(env, sender, sendResponse);
   };
-  chrome.runtime.onMessage.addListener(listener);
-  return () => chrome.runtime.onMessage.removeListener(listener);
+  if (!isExtensionAlive()) return () => {};
+  try {
+    chrome.runtime.onMessage.addListener(listener);
+  } catch {
+    return () => {};
+  }
+  return () => {
+    try {
+      chrome.runtime.onMessage.removeListener(listener);
+    } catch {
+      /* context 失効後は解除する対象もない */
+    }
+  };
 }
