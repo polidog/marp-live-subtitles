@@ -1,8 +1,8 @@
 /** spec §27 / spec2 §30-§33, §41 — Options Page */
 import { useEffect, useState } from "react";
 import {
-  hasMicPermission,
   listMicrophones,
+  micPermissionState,
   requestMicPermission,
 } from "../../lib/audio/capture";
 import { LANGUAGES, languageName } from "../../lib/translation/types";
@@ -18,14 +18,14 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [apiKey, setApiKey] = useState("");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
-  const [granted, setGranted] = useState(false);
+  const [permission, setPermission] = useState<string>("unknown");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     void (async () => {
       setSettings(await getSettings());
       setApiKey(await apiKeyItem.getValue());
-      setGranted(await hasMicPermission());
+      setPermission(await micPermissionState());
       setMics(await listMicrophones().catch(() => []));
     })();
   }, []);
@@ -41,9 +41,11 @@ export default function App() {
   };
 
   const grant = async () => {
-    const ok = await requestMicPermission();
-    setGranted(ok);
-    if (ok) setMics(await listMicrophones().catch(() => []));
+    await requestMicPermission();
+    // getUserMedia が通っただけでは永続化されたとは限らないので、状態を読み直す
+    const state = await micPermissionState();
+    setPermission(state);
+    if (state === "granted") setMics(await listMicrophones().catch(() => []));
   };
 
   return (
@@ -115,13 +117,19 @@ export default function App() {
         </select>
       </Field>
       <Field label="Permission">
-        {granted ? (
-          <span style={{ color: "#16a34a" }}>マイク許可済み</span>
-        ) : (
-          <button style={s.button} onClick={grant}>
-            マイクを許可する
-          </button>
-        )}
+        <div>
+          {permission === "granted" ? (
+            <span style={{ color: "#16a34a" }}>マイク許可済み</span>
+          ) : (
+            <button style={s.button} onClick={grant}>
+              マイクを許可する
+            </button>
+          )}
+          {/* 権限は拡張 ID ごと。dev ビルドと本ビルドでは別扱いになる */}
+          <div style={s.note}>
+            permission: {permission} / extension: {chrome.runtime.id}
+          </div>
+        </div>
       </Field>
 
       <h2 style={s.h2}>Subtitle</h2>

@@ -34,11 +34,14 @@ export function classify(message: string, closeCode?: number): TranslationError 
 export function micError(e: unknown): TranslationError {
   const name = (e as Error)?.name ?? "";
   const message = String((e as Error)?.message ?? e);
+  // 原因を握りつぶさない。NotAllowedError なのか NotFoundError なのかで対処が変わる。
+  const detail = name ? `${name}: ${message}` : message;
+
   if (/NotAllowedError|SecurityError|Permission/i.test(name + message)) {
     return translationError(
       "MIC_PERMISSION_DENIED",
-      "マイクの利用が許可されていません。Options から許可してください。",
+      `マイクが許可されていません (${detail})。拡張 ${chrome.runtime.id} の Options で許可してください。`,
     );
   }
-  return translationError("MIC_UNAVAILABLE", `マイクを利用できません: ${message}`);
+  return translationError("MIC_UNAVAILABLE", `マイクを利用できません (${detail})`);
 }

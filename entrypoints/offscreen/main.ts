@@ -7,9 +7,10 @@ import {
   createTranslationProvider,
   type TranslationProvider,
 } from "../../lib/translation/provider";
-import type {
-  TranslationError,
-  TranslationStatus,
+import {
+  isTranslationError,
+  type TranslationError,
+  type TranslationStatus,
 } from "../../lib/translation/types";
 import { apiKeyItem, getSettings } from "../../stores/settings";
 import type { AppState, PresentationContext, Settings } from "../../types";
@@ -111,10 +112,15 @@ async function buildPipeline(): Promise<void> {
 
   if (context) await provider.updateContext?.(context);
 
-  // spec2 §15 — setup 完了前のチャンクは Provider 側でバッファされる
-  capture = await startAudioCapture(settings.micDeviceId, (pcm) =>
-    provider?.pushAudio(pcm),
-  );
+  // spec2 §15 — setup 完了前のチャンクは Provider 側でバッファされる。
+  // マイク由来の失敗だけを MIC_* として扱う（他の失敗まで「マイク未許可」と言わない）。
+  try {
+    capture = await startAudioCapture(settings.micDeviceId, (pcm) =>
+      provider?.pushAudio(pcm),
+    );
+  } catch (e) {
+    throw isTranslationError(e) ? e : micError(e);
+  }
 }
 
 async function teardown(): Promise<void> {
@@ -134,10 +140,9 @@ async function start(): Promise<void> {
   try {
     await buildPipeline();
   } catch (e) {
-    const error =
-      e && typeof e === "object" && "code" in e
-        ? (e as TranslationError)
-        : micError(e);
+    const error = isTranslationError(e)
+      ? e
+      : translationError("UNKNOWN", String((e as Error)?.message ?? e));
     reportError(error);
     running = false;
     await teardown();

@@ -49,6 +49,10 @@ export type TranslationError = {
   recoverable: boolean;
 };
 
+export function isTranslationError(e: unknown): e is TranslationError {
+  return typeof e === "object" && e !== null && "code" in e && "message" in e;
+}
+
 const LANG_NAME: Record<string, string> = {
   ja: "Japanese",
   en: "English",

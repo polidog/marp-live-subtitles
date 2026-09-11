@@ -1,5 +1,6 @@
 /** spec2 §7, §9, §41 — マイク取得と AudioWorklet パイプライン */
 import { AUDIO_CHUNK_SAMPLES, GEMINI_SAMPLE_RATE } from "../translation/gemini/config";
+import { translationError } from "../translation/gemini/errors";
 
 const WORKLET_URL = "pcm16-worklet.js";
 
@@ -18,6 +19,18 @@ export async function startAudioCapture(
   deviceId: string,
   onChunk: (pcm16: ArrayBuffer) => void,
 ): Promise<AudioCapture> {
+  // offscreen document は権限プロンプトを出せない。未許可のまま getUserMedia すると
+  // 素の NotAllowedError になって理由が分からないので、先に状態を確かめて言い切る。
+  const permission = await micPermissionState();
+  if (permission === "denied" || permission === "prompt") {
+    throw translationError(
+      "MIC_PERMISSION_DENIED",
+      `マイクが未許可です (permission: ${permission} / extension: ${chrome.runtime.id})。` +
+        `この拡張 ID の Options で「マイクを許可する」を実行してください。` +
+        `pnpm dev と pnpm build では拡張 ID が変わるため、許可はそれぞれ必要です。`,
+    );
+  }
+
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
@@ -72,15 +85,20 @@ export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
   return devices.filter((d) => d.kind === "audioinput");
 }
 
-export async function hasMicPermission(): Promise<boolean> {
+/** "granted" | "prompt" | "denied" | "unknown"（Permissions API が使えない場合） */
+export async function micPermissionState(): Promise<PermissionState | "unknown"> {
   try {
     const status = await navigator.permissions.query({
       name: "microphone" as PermissionName,
     });
-    return status.state === "granted";
+    return status.state;
   } catch {
-    return false;
+    return "unknown";
   }
+}
+
+export async function hasMicPermission(): Promise<boolean> {
+  return (await micPermissionState()) === "granted";
 }
 
 /** options ページ（タブ context）から一度だけ呼ぶ。offscreen ではプロンプトを出せない。 */
