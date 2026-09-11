@@ -17,6 +17,7 @@ import {
   SETUP_TIMEOUT_MS,
 } from "./config";
 import { classify, translationError } from "./errors";
+import { trace, traceOnce } from "../../trace";
 import { buildAudioChunk, buildSetup, type GeminiServerEvent } from "./protocol";
 
 export class GeminiLiveTranslationProvider implements TranslationProvider {
@@ -39,6 +40,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
   private attempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private setupTimer: ReturnType<typeof setTimeout> | null = null;
+  private setupSentAt = 0;
   private sentChunks = 0;
   private droppedChunks = 0;
   private stopped = false;
@@ -74,9 +76,12 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
     });
 
     await client.connect();
+    trace("WebSocket 接続 ok", "generativelanguage.googleapis.com");
 
     this.onStatusCb("CONFIGURING");
+    this.setupSentAt = Date.now();
     client.send(buildSetup(config));
+    trace("setup 送信 ok", `model: ${config.model}, target: ${config.targetLanguage}`);
 
     // setupComplete が来ないと ready にならず音声を捨て続ける。
     // 黙って無音になるより、時間で切ってエラーにする。
@@ -100,12 +105,14 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
         this.attempt = 0;
         if (this.setupTimer) clearTimeout(this.setupTimer);
         this.setupTimer = null;
+        trace("setupComplete 受信 ok", `${Date.now() - this.setupSentAt}ms`);
         this.onStatusCb("READY");
         this.flush();
         break;
 
       // spec2 §17 — 入力 transcript は Debug / latency 計測用
       case "inputTranscription":
+        traceOnce("first-input", "最初の inputTranscription 受信", event.text.slice(0, 40));
         this.inputText += event.text;
         this.onInput({
           text: this.inputText,
@@ -116,6 +123,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
       // spec2 §18 — これが字幕になる
       case "outputTranscription": {
+        traceOnce("first-output", "最初の outputTranscription 受信", event.text.slice(0, 40));
         this.outputText += event.text;
         const now = Date.now();
         if (this.firstOutputAt == null) {

@@ -6,7 +6,7 @@
  * なった content script など—— では import しただけで例外になる。
  * ここで必要なのは get / set / watch だけなので chrome.storage.local を直接使う。
  */
-import { isStorageAvailable } from "../lib/extension";
+import { extensionId, isStorageAvailable } from "../lib/extension";
 import { DEFAULT_TRANSLATION_MODEL } from "../lib/translation/provider";
 import type { Settings } from "../types";
 
@@ -88,7 +88,7 @@ export function watchSettings(cb: (s: Settings) => void): () => void {
 /** 読めなかった場合は握りつぶさず投げる。「未設定」と「読めなかった」は別物。 */
 export async function getApiKey(): Promise<string> {
   if (!isStorageAvailable()) {
-    throw new Error(`chrome.storage が使えません (extension: ${chrome.runtime?.id})`);
+    throw new Error(`chrome.storage が使えません (extension: ${extensionId()})`);
   }
   return ((await chrome.storage.local.get(API_KEY))[API_KEY] as string) ?? "";
 }

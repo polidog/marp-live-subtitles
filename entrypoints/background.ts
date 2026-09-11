@@ -7,6 +7,7 @@ import {
   type ExtensionMessage,
 } from "../lib/messaging/messages";
 import { getApiKey, getSettings } from "../stores/settings";
+import { resetTrace, trace, traceFail, traceOnce } from "../lib/trace";
 import type { AppState, MarpDetection } from "../types";
 
 const OFFSCREEN_URL = "offscreen.html";
@@ -56,17 +57,23 @@ export default defineBackground(() => {
       return;
     }
     targetTabId = tab.id;
+    resetTrace();
+    trace("Start", `tab ${tab.id}: ${tab.url?.slice(0, 80)}`);
 
     setState("CONNECTING");
     try {
       // offscreen は chrome.storage を持たないので、ここで読んで渡す
       const [settings, apiKey] = await Promise.all([getSettings(), getApiKey()]);
+      trace("設定を読み込み ok", `apiKey: ${apiKey.length}文字`);
       await ensureOffscreen();
+      trace("offscreen document 用意 ok");
       send("offscreen", { type: "OFFSCREEN_START", settings, apiKey });
       // 現在のスライドを Local Context State として取り込む (spec2 §28)
       sendToTab(targetTabId, { type: "DETECT" });
     } catch (e) {
-      setState("ERROR", String((e as Error)?.message ?? e));
+      const message = String((e as Error)?.message ?? e);
+      traceFail("Start 失敗", message);
+      setState("ERROR", message);
     }
   }
 
@@ -108,6 +115,10 @@ export default defineBackground(() => {
 
       case "MARP_DETECTION":
         detection = msg.detection;
+        trace(
+          "Marp 検出結果",
+          `${msg.detection.detected ? "検出" : "未検出"} / ${msg.detection.slideCount} slides`,
+        );
         send("ui", msg);
         break;
 
@@ -117,7 +128,10 @@ export default defineBackground(() => {
         if (state !== "STOPPING" && state !== "IDLE") {
           setState(msg.status === "final" ? "LISTENING" : "TRANSLATING");
         }
-        if (targetTabId != null) sendToTab(targetTabId, msg);
+        if (targetTabId != null) {
+          traceOnce("first-forward", "最初の SUBTITLE を content へ転送", `tab ${targetTabId}`);
+          sendToTab(targetTabId, msg);
+        }
         send("ui", msg);
         break;
 
@@ -144,6 +158,11 @@ export default defineBackground(() => {
 
       case "DEBUG_LOG":
         console.info("[marp-live-subtitles]", msg.log);
+        break;
+
+      // 各 context の進捗をここに集約する
+      case "TRACE":
+        console.info(`[MLS] ${msg.context}: ${msg.line}`);
         break;
     }
   });

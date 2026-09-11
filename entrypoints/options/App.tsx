@@ -1,5 +1,5 @@
 /** spec §27 / spec2 §30-§33, §41 — Options Page */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   listMicrophones,
   micPermissionState,
@@ -22,6 +22,7 @@ export default function App() {
   const [storedKey, setStoredKey] = useState("");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [permission, setPermission] = useState<string>("unknown");
+  const [grantError, setGrantError] = useState<string>();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -46,11 +47,32 @@ export default function App() {
   };
 
   const grant = async () => {
-    await requestMicPermission();
+    const ok = await requestMicPermission();
     // getUserMedia が通っただけでは永続化されたとは限らないので、状態を読み直す
     const state = await micPermissionState();
     setPermission(state);
-    if (state === "granted") setMics(await listMicrophones().catch(() => []));
+    if (ok) {
+      setMics(await listMicrophones().catch(() => []));
+      setGrantError(undefined);
+    } else {
+      // 一度拒否すると Chrome は再プロンプトしない。行き止まりにしない。
+      setGrantError(
+        `許可されませんでした (permission: ${state})。アドレスバー左のアイコン、または` +
+          ` chrome://settings/content/microphone からこの拡張のマイクを許可してください。`,
+      );
+    }
+  };
+
+  /** 1 文字ごとに保存すると途中の値が生きてしまうので、入力が止まってから書く */
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onApiKeyChange = (value: string) => {
+    setApiKeyInput(value);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      await setApiKey(value.trim());
+      setStoredKey(await getApiKey().catch(() => ""));
+      flash();
+    }, 600);
   };
 
   return (
@@ -134,6 +156,7 @@ export default function App() {
           <div style={s.note}>
             permission: {permission} / extension: {chrome.runtime.id}
           </div>
+          {grantError && <div style={s.error}>{grantError}</div>}
         </div>
       </Field>
 
@@ -205,14 +228,10 @@ export default function App() {
             type="password"
             value={apiKey}
             placeholder="AIza..."
-            // blur を待つと「入力したのに保存されていない」が起きるのでその場で保存する
-            onChange={async (e) => {
-              const value = e.target.value;
-              setApiKeyInput(value);
-              await setApiKey(value.trim());
-              setStoredKey(await getApiKey());
-              flash();
-            }}
+            // blur 待ちだと「入力したのに保存されていない」、1 文字ごとだと途中の値が
+            // 生きてしまう。入力が止まってから書く。
+            onChange={(e) => onApiKeyChange(e.target.value)}
+            onBlur={(e) => onApiKeyChange(e.target.value)}
           />
           <div style={s.note}>
             {storedKey
@@ -312,6 +331,14 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   note: { color: "#6b7280", fontSize: 12, marginTop: 4 },
+  error: {
+    color: "#991b1b",
+    background: "#fee2e2",
+    fontSize: 12,
+    padding: 6,
+    borderRadius: 6,
+    marginTop: 4,
+  },
   saved: {
     position: "fixed",
     top: 12,

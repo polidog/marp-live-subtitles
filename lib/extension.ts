@@ -14,5 +14,14 @@ export function isExtensionAlive(): boolean {
 }
 
 export function isStorageAvailable(): boolean {
-  return isExtensionAlive() && chrome.storage != null;
+  try {
+    return isExtensionAlive() && chrome.storage != null;
+  } catch {
+    return false;
+  }
+}
+
+/** ログ用。chrome 自体が無い context でも落ちない。 */
+export function extensionId(): string {
+  return globalThis.chrome?.runtime?.id ?? "(不明)";
 }

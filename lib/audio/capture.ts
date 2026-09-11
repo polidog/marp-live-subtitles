@@ -1,6 +1,7 @@
 /** spec2 §7, §9, §41 — マイク取得と AudioWorklet パイプライン */
 import { AUDIO_CHUNK_SAMPLES, GEMINI_SAMPLE_RATE } from "../translation/gemini/config";
 import { translationError } from "../translation/gemini/errors";
+import { trace, traceOnce } from "../trace";
 
 const WORKLET_URL = "pcm16-worklet.js";
 
@@ -19,27 +20,39 @@ export async function startAudioCapture(
   deviceId: string,
   onChunk: (pcm16: ArrayBuffer) => void,
 ): Promise<AudioCapture> {
-  // offscreen document は権限プロンプトを出せない。未許可のまま getUserMedia すると
-  // 素の NotAllowedError になって理由が分からないので、先に状態を確かめて言い切る。
+  // Permissions API の状態は参考値。"prompt" でもポリシーや別経路で許可済みのことが
+  // あるので決め打ちで失敗させず、実際に試してから理由づけに使う。
   const permission = await micPermissionState();
-  if (permission === "denied" || permission === "prompt") {
-    throw translationError(
-      "MIC_PERMISSION_DENIED",
-      `マイクが未許可です (permission: ${permission} / extension: ${chrome.runtime.id})。` +
-        `この拡張 ID の Options で「マイクを許可する」を実行してください。` +
-        `pnpm dev と pnpm build では拡張 ID が変わるため、許可はそれぞれ必要です。`,
-    );
-  }
+  trace("マイク権限", `permission: ${permission} / extension: ${chrome.runtime.id}`);
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (e) {
+    const name = (e as Error)?.name ?? "";
+    // offscreen document は権限プロンプトを出せないので、未許可なら Options へ誘導する
+    if (permission !== "granted" && /NotAllowedError|SecurityError/i.test(name)) {
+      throw translationError(
+        "MIC_PERMISSION_DENIED",
+        `マイクが未許可です (permission: ${permission} / ${name} / extension: ${chrome.runtime.id})。` +
+          `この拡張 ID の Options で「マイクを許可する」を実行してください。` +
+          `pnpm dev と pnpm build では拡張 ID が変わるため、許可はそれぞれ必要です。`,
+      );
+    }
+    throw e;
+  }
+  trace(
+    "getUserMedia ok",
+    stream.getAudioTracks()[0]?.label || "(デバイス名なし)",
+  );
 
   // 16 kHz で開ければブラウザ側がリサンプルしてくれる。駄目でも worklet 側で間引く。
   const ctx = new AudioContext({ sampleRate: GEMINI_SAMPLE_RATE });
@@ -57,7 +70,12 @@ export async function startAudioCapture(
     },
   });
 
-  worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => onChunk(e.data);
+  trace("AudioWorklet 起動 ok", `AudioContext ${ctx.sampleRate}Hz`);
+
+  worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+    traceOnce("first-chunk", "最初の音声チャンク", `${e.data.byteLength} bytes`);
+    onChunk(e.data);
+  };
 
   // 出力を destination まで繋がないとノードが駆動されないため、無音 gain を経由させる
   const silent = ctx.createGain();

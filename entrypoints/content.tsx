@@ -8,6 +8,7 @@ import { toPresentationContext } from "../lib/marp/context";
 import { detectMarp } from "../lib/marp/detector";
 import { getSlideContext, watchSlideChange } from "../lib/marp/slide";
 import { onMessage, send } from "../lib/messaging/messages";
+import { trace, traceOnce } from "../lib/trace";
 import { DEFAULT_SETTINGS, getSettings, watchSettings } from "../stores/settings";
 import type { Settings, SubtitleStatus } from "../types";
 
@@ -40,6 +41,7 @@ function SubtitleApp() {
   useEffect(() => {
     return onMessage("content", (msg) => {
       if (msg.type === "SUBTITLE") {
+        traceOnce("first-render", "最初の SUBTITLE を受信して描画", msg.text.slice(0, 40));
         // 次の字幕が来たら fade をキャンセルする (spec2 §24)
         clearTimers();
         setFading(false);
@@ -135,6 +137,10 @@ export default defineContentScript({
     });
 
     ui.mount();
+    trace(
+      "overlay mount ok",
+      `Marp ${detection.detected ? "検出" : "未検出"} / ${detection.slideCount} slides`,
+    );
 
     // Marp 操作を一切奪わない (spec §29)
     const host = ui.shadowHost as HTMLElement;

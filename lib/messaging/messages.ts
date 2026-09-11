@@ -45,7 +45,9 @@ export type ExtensionMessage =
     }
   | { type: "CLEAR" }
   | { type: "STATUS"; state: AppState; error?: string; latencyMs?: number }
-  | { type: "DEBUG_LOG"; log: DebugLog };
+  | { type: "DEBUG_LOG"; log: DebugLog }
+  // 各 context の進捗を background のコンソールに集める
+  | { type: "TRACE"; context: string; line: string };
 
 export type Envelope = ExtensionMessage & { target: Target };
 

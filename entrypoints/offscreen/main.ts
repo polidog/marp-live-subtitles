@@ -1,6 +1,7 @@
 /** spec §16 / spec2 §2, §7, §19, §34, §41 — Microphone と Translation Provider を担う Offscreen Document */
 import { startAudioCapture, type AudioCapture } from "../../lib/audio/capture";
 import { onMessage, send } from "../../lib/messaging/messages";
+import { resetTrace, trace, traceFail, traceOnce } from "../../lib/trace";
 import { TranslationCommitter } from "../../lib/translation/committer";
 import { micError, translationError } from "../../lib/translation/gemini/errors";
 import {
@@ -46,6 +47,10 @@ async function buildPipeline(config: {
 }): Promise<void> {
   settings = config.settings;
   const apiKey = config.apiKey;
+  trace(
+    "設定を受信 ok",
+    `model: ${settings.model}, ${settings.sourceLang}→${settings.targetLang}, apiKey: ${apiKey.length}文字`,
+  );
   if (!apiKey) {
     // 拡張 ID を出す。権限も storage も拡張ごとなので、dev ビルドと本ビルドで
     // 別の場所に保存されている取り違えがここで分かる。
@@ -58,6 +63,7 @@ async function buildPipeline(config: {
   committer = new TranslationCommitter({
     emit: (out) => {
       // spec2 §19-§20 — Subtitle State Layer を通してから描画側へ送る
+      traceOnce("first-subtitle", "最初の SUBTITLE を送出", out.text.slice(0, 40));
       send("background", {
         type: "SUBTITLE",
         text: out.text,
@@ -83,6 +89,7 @@ async function buildPipeline(config: {
   });
 
   provider = await createTranslationProvider(settings.provider, apiKey);
+  trace("Provider 作成 ok", settings.provider);
 
   provider.onInputTranscript((payload) => {
     committer?.handleInput(payload);
@@ -140,14 +147,18 @@ async function teardown(): Promise<void> {
 async function start(config: { settings: Settings; apiKey: string }): Promise<void> {
   if (running) return;
   running = true;
+  resetTrace();
+  trace("Start 受信");
   send("background", { type: "STATUS", state: "CONNECTING" });
 
   try {
     await buildPipeline(config);
+    trace("パイプライン構築完了 — 発話待ち");
   } catch (e) {
     const error = isTranslationError(e)
       ? e
       : translationError("UNKNOWN", String((e as Error)?.message ?? e));
+    traceFail("Start 失敗", `${error.code}: ${error.message}`);
     reportError(error);
     running = false;
     await teardown();

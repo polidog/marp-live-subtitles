@@ -53,7 +53,11 @@ export type TranslationError = {
 };
 
 export function isTranslationError(e: unknown): e is TranslationError {
-  return typeof e === "object" && e !== null && "code" in e && "message" in e;
+  // DOMException は prototype に code / message を持つため "in" では判別できない。
+  // code が文字列であること（DOMException.code は数値）と recoverable の有無で見る。
+  if (typeof e !== "object" || e === null) return false;
+  const candidate = e as Partial<TranslationError>;
+  return typeof candidate.code === "string" && typeof candidate.recoverable === "boolean";
 }
 
 const LANG_NAME: Record<string, string> = {
