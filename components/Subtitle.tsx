@@ -76,15 +76,14 @@ export function Subtitle({
     boxSizing: "border-box",
   };
 
-  // ロールアップ: 枠を maxLines 行で切り、中身を下揃えにする。
+  // ロールアップ: 中身を maxLines 行で切り、下揃えにする。
   // 溢れた古い行は上にはみ出して clip される = 新しい文が下から押し上げる動きになる。
-  const PADDING_EM = 0.8; // box の上下 padding 合計
+  // box ではなく内側で切る。box で切ると padding の分だけ古い行が半分見えてしまう。
   const rollupFor = (lines: number): CSSProperties => ({
-    maxHeight: `${lines * LINE_HEIGHT + PADDING_EM}em`,
+    maxHeight: `${lines * LINE_HEIGHT}em`,
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    // 下揃え。溢れた古い行は上にはみ出して clip される = ロールアップ
     justifyContent: "flex-end",
   });
 
@@ -98,11 +97,12 @@ export function Subtitle({
             fontSize: Math.round(settings.fontSize * 0.55),
             opacity: 0.85,
             fontWeight: 400,
-            // 原文は 1 文だけなので行数を抑える
-            ...rollupFor(2),
           }}
         >
-          <div>{original}</div>
+          {/* 原文は 1 文だけなので行数を抑える */}
+          <div style={rollupFor(2)}>
+            <div>{original}</div>
+          </div>
         </div>
       ) : null}
 
@@ -111,28 +111,29 @@ export function Subtitle({
           className="subtitle"
           style={{
             ...box,
-            ...rollupFor(settings.maxLines),
             fontSize: settings.fontSize,
             fontWeight: 600,
           }}
         >
-          <div>
-            {finals.join(" ")}
-            {finals.length > 0 && current ? " " : ""}
-            {current ? (
-              <span
-                style={{
-                  opacity: STATUS_OPACITY[status],
-                  // 暫定は破線で示す (spec2 §22)
-                  borderBottom:
-                    status === "final"
-                      ? undefined
-                      : "2px dashed rgba(255,255,255,0.45)",
-                }}
-              >
-                {current}
-              </span>
-            ) : null}
+          <div style={rollupFor(settings.maxLines)}>
+            <div>
+              {finals.join(" ")}
+              {finals.length > 0 && current ? " " : ""}
+              {current ? (
+                <span
+                  style={{
+                    opacity: STATUS_OPACITY[status],
+                    // 暫定は破線で示す (spec2 §22)
+                    borderBottom:
+                      status === "final"
+                        ? undefined
+                        : "2px dashed rgba(255,255,255,0.45)",
+                  }}
+                >
+                  {current}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
