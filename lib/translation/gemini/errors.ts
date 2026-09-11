@@ -1,4 +1,5 @@
 /** spec2 §38 — Translation Error の分類 */
+import { extensionId } from "../../extension";
 import type { TranslationError, TranslationErrorCode } from "../types";
 
 export function translationError(
@@ -52,7 +53,7 @@ export function micError(e: unknown): TranslationError {
   if (/NotAllowedError|SecurityError|Permission/i.test(name + message)) {
     return translationError(
       "MIC_PERMISSION_DENIED",
-      `マイクが許可されていません (${detail})。拡張 ${chrome.runtime.id} の Options で許可してください。`,
+      `マイクが許可されていません (${detail})。拡張 ${extensionId()} の Options で許可してください。`,
     );
   }
   return translationError("MIC_UNAVAILABLE", `マイクを利用できません (${detail})`);

@@ -6,6 +6,7 @@
  * 少し落ち着くたびに翻訳へ投げる。テキスト翻訳は安いので回数は気にしない。
  */
 import type { PresentationContext } from "../../../types";
+import { extensionId } from "../../extension";
 import { trace } from "../../trace";
 import { translationInstruction } from "../gemini/config";
 import { translationError } from "../gemini/errors";
@@ -141,7 +142,7 @@ export class WebSpeechTextTranslationProvider implements TranslationProvider {
         this.onErrorCb(
           translationError(
             "MIC_PERMISSION_DENIED",
-            `マイクが許可されていません (${detail})。拡張 ${chrome.runtime.id} の Options で許可してください。`,
+            `マイクが許可されていません (${detail})。拡張 ${extensionId()} の Options で許可してください。`,
           ),
         );
       } else if (e.error === "audio-capture") {

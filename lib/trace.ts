@@ -8,6 +8,7 @@
  * 出るのはライフサイクル上の節目だけ（Start 1 回につき十数行）。
  * 生の送受信や音声チャンク数は Options の "Log Gemini events" 側。
  */
+import { isExtensionAlive } from "./extension";
 import { send } from "./messaging/messages";
 
 function contextName(): string {
@@ -15,7 +16,8 @@ function contextName(): string {
   if (location.protocol === "chrome-extension:") {
     return location.pathname.replace(/^\//, "").replace(/\.html$/, "") || "extension";
   }
-  return "content";
+  // 拡張が居ないページ = embed/ で読み込まれた埋め込みスクリプト
+  return isExtensionAlive() ? "content" : "page";
 }
 
 const CONTEXT = contextName();
@@ -35,10 +37,11 @@ export function trace(step: string, detail?: string): void {
   const text = line(step, detail);
   console.info(`[MLS] ${CONTEXT}: ${text}`);
   // background は自分の送信を受け取らないので二重には出ない
-  if (CONTEXT !== "background") {
-    send("background", { type: "TRACE", context: CONTEXT, line: text });
-  } else {
+  if (CONTEXT === "background") {
     sink?.(CONTEXT, text);
+  } else if (isExtensionAlive()) {
+    // 孤児になった content script では sendMessage が同期的に throw する
+    send("background", { type: "TRACE", context: CONTEXT, line: text });
   }
 }
 

@@ -1,9 +1,20 @@
 /** spec2 §7, §9, §41 — マイク取得と AudioWorklet パイプライン */
+import WORKLET_SOURCE from "../../public/pcm16-worklet.js?raw";
+import { extensionId, isExtensionAlive } from "../extension";
 import { AUDIO_CHUNK_SAMPLES, GEMINI_SAMPLE_RATE } from "../translation/gemini/config";
 import { translationError } from "../translation/gemini/errors";
 import { trace, traceOnce } from "../trace";
 
 const WORKLET_URL = "pcm16-worklet.js";
+
+/**
+ * 拡張では web_accessible_resource として配られたファイルを読む。
+ * ページ埋め込み（embed/）では配布物を 1 ファイルに収めたいので、同じソースを Blob にする。
+ */
+function workletUrl(): string {
+  if (isExtensionAlive()) return chrome.runtime.getURL(WORKLET_URL);
+  return URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "text/javascript" }));
+}
 
 export const AUDIO_FORMAT_LABEL = `${GEMINI_SAMPLE_RATE / 1000}kHz PCM16 Mono`;
 
@@ -23,7 +34,7 @@ export async function startAudioCapture(
   // Permissions API の状態は参考値。"prompt" でもポリシーや別経路で許可済みのことが
   // あるので決め打ちで失敗させず、実際に試してから理由づけに使う。
   const permission = await micPermissionState();
-  trace("マイク権限", `permission: ${permission} / extension: ${chrome.runtime.id}`);
+  trace("マイク権限", `permission: ${permission} / extension: ${extensionId()}`);
 
   let stream: MediaStream;
   try {
@@ -42,7 +53,7 @@ export async function startAudioCapture(
     if (permission !== "granted" && /NotAllowedError|SecurityError/i.test(name)) {
       throw translationError(
         "MIC_PERMISSION_DENIED",
-        `マイクが未許可です (permission: ${permission} / ${name} / extension: ${chrome.runtime.id})。` +
+        `マイクが未許可です (permission: ${permission} / ${name} / extension: ${extensionId()})。` +
           `Options の「マイクを許可する」でプロンプトが出たら「今回のみ」ではなく「常に許可」を選ぶか、` +
           `「Chrome のサイト設定を開く」でマイクを「許可」に固定してください。` +
           `pnpm dev と pnpm build では拡張 ID が変わるため、許可はそれぞれ必要です。`,
@@ -58,7 +69,7 @@ export async function startAudioCapture(
   // 16 kHz で開ければブラウザ側がリサンプルしてくれる。駄目でも worklet 側で間引く。
   const ctx = new AudioContext({ sampleRate: GEMINI_SAMPLE_RATE });
   await ctx.resume();
-  await ctx.audioWorklet.addModule(chrome.runtime.getURL(WORKLET_URL));
+  await ctx.audioWorklet.addModule(workletUrl());
 
   const source = ctx.createMediaStreamSource(stream);
   const worklet = new AudioWorkletNode(ctx, "pcm16-processor", {
@@ -127,7 +138,7 @@ export async function hasMicPermission(): Promise<boolean> {
  */
 export function micSiteSettingsUrl(): string {
   return `chrome://settings/content/siteDetails?site=${encodeURIComponent(
-    `chrome-extension://${chrome.runtime.id}`,
+    `chrome-extension://${extensionId()}`,
   )}`;
 }
 
