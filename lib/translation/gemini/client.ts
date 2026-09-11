@@ -10,7 +10,11 @@ export class GeminiLiveClient {
   private onEventCb: (event: GeminiServerEvent) => void = () => {};
   private onCloseCb: (error?: TranslationError) => void = () => {};
 
-  constructor(private readonly url: string) {}
+  /** logEvents が true なら生の送受信を offscreen のコンソールへ出す */
+  constructor(
+    private readonly url: string,
+    private readonly logEvents = false,
+  ) {}
 
   onEvent(cb: (event: GeminiServerEvent) => void) {
     this.onEventCb = cb;
@@ -59,15 +63,32 @@ export class GeminiLiveClient {
     try {
       json = JSON.parse(text);
     } catch {
+      if (this.logEvents) console.debug("[gemini] 解釈できない受信:", text.slice(0, 500));
       return;
     }
-    for (const event of parseServerMessage(json)) this.onEventCb(event);
+
+    const events = parseServerMessage(json);
+    if (this.logEvents) {
+      // 解釈できなかったメッセージを黙って捨てない。フィールド名が変わると
+      // 「エラーも字幕も出ない」状態になり、ここを見ないと気づけない。
+      console.debug(
+        events.length ? "[gemini] 受信:" : "[gemini] 受信(未解釈):",
+        events.length ? events : json,
+      );
+    }
+    for (const event of events) this.onEventCb(event);
   }
 
   send(payload: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload));
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      if (this.logEvents) console.debug("[gemini] 未接続のため送信スキップ");
+      return;
     }
+    // 音声チャンクは毎秒 10 件流れるのでログから除く
+    if (this.logEvents && !(payload as any)?.realtimeInput) {
+      console.debug("[gemini] 送信:", payload);
+    }
+    this.ws.send(JSON.stringify(payload));
   }
 
   close(): void {

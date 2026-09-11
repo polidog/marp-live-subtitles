@@ -10,6 +10,9 @@ export type TranslationConfig = {
   outputTranscription: boolean;
 
   echoTargetLanguage: boolean;
+
+  /** spec2 §31 Log Gemini events — 生の送受信を offscreen のコンソールへ出す */
+  logEvents?: boolean;
 };
 
 /** spec2 §16。latencyMs は Provider が算出する First Subtitle Latency (spec2 §36) */

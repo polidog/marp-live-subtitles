@@ -63,7 +63,13 @@ export function send(target: Target, msg: ExtensionMessage): void {
 export function sendToTab(tabId: number, msg: ExtensionMessage): void {
   void chrome.tabs
     .sendMessage(tabId, { ...msg, target: "content" } as Envelope)
-    .catch(() => {});
+    // content script が居ないと字幕は黙って消える。理由を残す。
+    .catch((e: unknown) =>
+      console.debug(
+        `[marp-live-subtitles] tab ${tabId} へ ${msg.type} を送れません:`,
+        (e as Error)?.message ?? e,
+      ),
+    );
 }
 
 /** 自分宛の Envelope だけ受け取るリスナーを登録し、解除関数を返す。 */

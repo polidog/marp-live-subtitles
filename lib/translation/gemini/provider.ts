@@ -14,8 +14,9 @@ import {
   PENDING_CHUNK_LIMIT,
   RECONNECT_DELAYS_MS,
   RECONNECT_MAX_MS,
+  SETUP_TIMEOUT_MS,
 } from "./config";
-import { classify } from "./errors";
+import { classify, translationError } from "./errors";
 import { buildAudioChunk, buildSetup, type GeminiServerEvent } from "./protocol";
 
 export class GeminiLiveTranslationProvider implements TranslationProvider {
@@ -37,6 +38,9 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
   private attempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private setupTimer: ReturnType<typeof setTimeout> | null = null;
+  private sentChunks = 0;
+  private droppedChunks = 0;
   private stopped = false;
 
   private onInput: (e: TranscriptEvent) => void = () => {};
@@ -59,7 +63,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
     this.ready = false;
     this.onStatusCb("CONNECTING");
 
-    const client = new GeminiLiveClient(endpointUrl(this.apiKey));
+    const client = new GeminiLiveClient(endpointUrl(this.apiKey), config.logEvents);
     this.client = client;
 
     client.onEvent((event) => this.handle(event));
@@ -73,6 +77,20 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
     this.onStatusCb("CONFIGURING");
     client.send(buildSetup(config));
+
+    // setupComplete が来ないと ready にならず音声を捨て続ける。
+    // 黙って無音になるより、時間で切ってエラーにする。
+    this.setupTimer = setTimeout(() => {
+      this.setupTimer = null;
+      if (this.ready || this.stopped) return;
+      this.onErrorCb(
+        translationError(
+          "SESSION_FAILED",
+          `Gemini から setup 応答がありません (${SETUP_TIMEOUT_MS / 1000} 秒待機, model: ${config.model})。` +
+            `モデル名が正しいか確認してください。`,
+        ),
+      );
+    }, SETUP_TIMEOUT_MS);
   }
 
   private handle(event: GeminiServerEvent): void {
@@ -80,6 +98,8 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
       case "setupComplete":
         this.ready = true;
         this.attempt = 0;
+        if (this.setupTimer) clearTimeout(this.setupTimer);
+        this.setupTimer = null;
         this.onStatusCb("READY");
         this.flush();
         break;
@@ -164,10 +184,25 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
     if (!this.ready) {
       this.pending.push(chunk);
-      if (this.pending.length > PENDING_CHUNK_LIMIT) this.pending.shift();
+      if (this.pending.length > PENDING_CHUNK_LIMIT) {
+        this.pending.shift();
+        this.droppedChunks += 1;
+      }
       return;
     }
+
     this.client?.send(buildAudioChunk(pcm16ToBase64(chunk)));
+    this.sentChunks += 1;
+    // 1 チャンク 100ms なので 50 件 = 5 秒ごと。マイクが死んでいれば増えない。
+    if (this.logEvents && this.sentChunks % 50 === 0) {
+      console.debug(
+        `[gemini] 音声送信 ${this.sentChunks} チャンク (${(this.sentChunks / 10).toFixed(0)}秒), 破棄 ${this.droppedChunks}`,
+      );
+    }
+  }
+
+  private get logEvents(): boolean {
+    return this.config?.logEvents ?? false;
   }
 
   private flush(): void {
@@ -213,6 +248,10 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+    if (this.setupTimer) clearTimeout(this.setupTimer);
+    this.setupTimer = null;
+    this.sentChunks = 0;
+    this.droppedChunks = 0;
     this.client?.close();
     this.client = null;
     this.ready = false;

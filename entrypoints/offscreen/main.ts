@@ -112,6 +112,7 @@ async function buildPipeline(config: {
     inputTranscription: true,
     outputTranscription: true,
     echoTargetLanguage: settings.echoTargetLanguage,
+    logEvents: settings.logProviderEvents,
   });
 
   if (context) await provider.updateContext?.(context);

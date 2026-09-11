@@ -93,6 +93,25 @@ export default function App() {
 
   const running = RUNNING.includes(state);
 
+  /** Gemini を経由せず content script の描画だけを確かめる (Debug Mode 専用) */
+  const sendTestSubtitle = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return setError("対象タブが見つかりません");
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        target: "content",
+        type: "SUBTITLE",
+        status: "final",
+        original: "今日は新しいサービスを紹介します",
+        text: "Today, I'd like to introduce our new service.",
+        latencyMs: 840,
+      });
+      setError(undefined);
+    } catch (e) {
+      setError(`content script に届きません: ${(e as Error)?.message ?? e}`);
+    }
+  };
+
   return (
     <div style={s.root}>
       <div style={s.title}>Marp Live Subtitles</div>
@@ -177,6 +196,9 @@ export default function App() {
           <div style={s.debugText}>{output || "—"}</div>
           <label style={s.label}>Audio</label>
           <div style={s.debugText}>{AUDIO_FORMAT_LABEL}</div>
+          <button style={{ ...s.button, marginTop: 8 }} onClick={sendTestSubtitle}>
+            テスト字幕を表示
+          </button>
         </div>
       )}
 

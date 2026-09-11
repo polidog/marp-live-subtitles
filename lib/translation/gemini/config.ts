@@ -15,6 +15,9 @@ export const AUDIO_CHUNK_SAMPLES = GEMINI_SAMPLE_RATE / 10;
 export const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 export const RECONNECT_MAX_MS = 10000;
 
+/** setup 応答が来ないまま無音で音声を捨て続けないための上限 (spec2 §15) */
+export const SETUP_TIMEOUT_MS = 10000;
+
 /** setup 完了前の音声を捨てないための保持上限 (spec2 §15) */
 export const PENDING_CHUNK_LIMIT = 20;
 
