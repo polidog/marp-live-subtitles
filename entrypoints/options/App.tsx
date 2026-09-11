@@ -18,6 +18,8 @@ import type { Settings } from "../../types";
 export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [apiKey, setApiKeyInput] = useState("");
+  /** 実際に chrome.storage.local に入っている値（入力中の state と区別する） */
+  const [storedKey, setStoredKey] = useState("");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [permission, setPermission] = useState<string>("unknown");
   const [saved, setSaved] = useState(false);
@@ -25,7 +27,9 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       setSettings(await getSettings());
-      setApiKeyInput(await getApiKey());
+      const stored = await getApiKey().catch(() => "");
+      setApiKeyInput(stored);
+      setStoredKey(stored);
       setPermission(await micPermissionState());
       setMics(await listMicrophones().catch(() => []));
     })();
@@ -201,12 +205,20 @@ export default function App() {
             type="password"
             value={apiKey}
             placeholder="AIza..."
-            onChange={(e) => setApiKeyInput(e.target.value)}
-            onBlur={async () => {
-              await setApiKey(apiKey.trim());
+            // blur を待つと「入力したのに保存されていない」が起きるのでその場で保存する
+            onChange={async (e) => {
+              const value = e.target.value;
+              setApiKeyInput(value);
+              await setApiKey(value.trim());
+              setStoredKey(await getApiKey());
               flash();
             }}
           />
+          <div style={s.note}>
+            {storedKey
+              ? `保存済み: ${storedKey.slice(0, 6)}…${storedKey.slice(-4)} (${storedKey.length} 文字)`
+              : "未保存"}
+          </div>
           {/* spec2 §32 */}
           <div style={s.note}>
             For local development only. Do not distribute builds containing your API

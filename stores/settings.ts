@@ -85,13 +85,12 @@ export function watchSettings(cb: (s: Settings) => void): () => void {
   };
 }
 
+/** 読めなかった場合は握りつぶさず投げる。「未設定」と「読めなかった」は別物。 */
 export async function getApiKey(): Promise<string> {
-  if (!isStorageAvailable()) return "";
-  try {
-    return ((await chrome.storage.local.get(API_KEY))[API_KEY] as string) ?? "";
-  } catch {
-    return "";
+  if (!isStorageAvailable()) {
+    throw new Error(`chrome.storage が使えません (extension: ${chrome.runtime?.id})`);
   }
+  return ((await chrome.storage.local.get(API_KEY))[API_KEY] as string) ?? "";
 }
 
 export async function setApiKey(value: string): Promise<void> {

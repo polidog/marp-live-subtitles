@@ -45,9 +45,11 @@ async function buildPipeline(): Promise<void> {
   settings = await getSettings();
   const apiKey = await getApiKey();
   if (!apiKey) {
+    // 拡張 ID を出す。権限も storage も拡張ごとなので、dev ビルドと本ビルドで
+    // 別の場所に保存されている取り違えがここで分かる。
     throw translationError(
       "AUTH_FAILED",
-      "Gemini API Key が未設定です。Options で設定してください。",
+      `Gemini API Key が未設定です (extension: ${chrome.runtime.id})。この拡張 ID の Options で設定してください。`,
     );
   }
 
