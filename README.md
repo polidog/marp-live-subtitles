@@ -78,6 +78,26 @@ marp -s .               # http://localhost:8080 で配る
   `data-provider="webspeech-gemini-text"`, `data-auto-start` など）
 - 接続中とエラーは右上に小さく出る
 
+### Cloudflare で配る
+
+`file://` を避けるいちばん楽な方法。Worker のコードは書かない（静的配信だけ）。
+
+```bash
+mkdir -p site
+marp slide.md --html -o site/index.html   # デッキを site/ に書き出す
+pnpm deploy                               # build:embed → site/ にコピー → wrangler deploy
+```
+
+初回だけ `pnpm dlx wrangler login`。`site/` は成果物置き場なので git には入れない。
+
+公開デッキなので **API Key は `data-api-key` に書かない**。発表する端末で一度だけ:
+
+```js
+localStorage.setItem("mls:apiKey", "AIza...")
+```
+
+Key 自体をデッキから消したい場合は、同じ Worker に短命トークンを返すエンドポイントを足す形になる（未実装）。
+
 拡張版との違いは 3 つだけ: 自分が書き出したデッキにしか効かない / `file://` 不可 /
 設定 UI の代わりに `data-*`。翻訳・字幕まわりの実装 (`lib/translation`, `components`) は共通。
 
