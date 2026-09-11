@@ -87,7 +87,7 @@ stores/settings.ts
 
 **Latency** — `First Subtitle Latency` = ターン最初の音声チャンクを掴んだ時刻 → 最初の `outputTranscription` 到着。VAD を持たないので発話直前の無音ぶんを含む近似値（`provider.ts` の `ponytail:` コメント参照）。
 
-**API Key** — offscreen document / options ページからのみ読む。content script・DOM・localStorage には渡さない（spec §32 / spec2 §12）。
+**API Key** — offscreen document は `chrome.runtime` 以外の拡張 API を使えない（`chrome.storage` が存在しない）ため、storage を読むのは background service worker と options ページだけ。API Key と設定は START メッセージに載せて offscreen へ渡す。content script・DOM・localStorage には渡さない（spec §32 / spec2 §12）。
 
 **Marp 操作を奪わない** — 字幕は shadow DOM 内の `pointer-events: none` な overlay。キー操作は Marp 側へ素通しする。
 

@@ -12,7 +12,6 @@ import {
   type TranslationError,
   type TranslationStatus,
 } from "../../lib/translation/types";
-import { getApiKey, getSettings } from "../../stores/settings";
 import type { AppState, PresentationContext, Settings } from "../../types";
 
 let running = false;
@@ -41,9 +40,12 @@ function reportError(error: TranslationError) {
   });
 }
 
-async function buildPipeline(): Promise<void> {
-  settings = await getSettings();
-  const apiKey = await getApiKey();
+async function buildPipeline(config: {
+  settings: Settings;
+  apiKey: string;
+}): Promise<void> {
+  settings = config.settings;
+  const apiKey = config.apiKey;
   if (!apiKey) {
     // 拡張 ID を出す。権限も storage も拡張ごとなので、dev ビルドと本ビルドで
     // 別の場所に保存されている取り違えがここで分かる。
@@ -134,13 +136,13 @@ async function teardown(): Promise<void> {
   committer = null;
 }
 
-async function start(): Promise<void> {
+async function start(config: { settings: Settings; apiKey: string }): Promise<void> {
   if (running) return;
   running = true;
   send("background", { type: "STATUS", state: "CONNECTING" });
 
   try {
-    await buildPipeline();
+    await buildPipeline(config);
   } catch (e) {
     const error = isTranslationError(e)
       ? e
@@ -159,8 +161,8 @@ async function stop(): Promise<void> {
 
 onMessage("offscreen", (msg) => {
   switch (msg.type) {
-    case "START":
-      void start();
+    case "OFFSCREEN_START":
+      void start({ settings: msg.settings, apiKey: msg.apiKey });
       break;
     case "STOP":
       void stop();

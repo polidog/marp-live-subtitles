@@ -6,6 +6,7 @@ import {
   sendToTab,
   type ExtensionMessage,
 } from "../lib/messaging/messages";
+import { getApiKey, getSettings } from "../stores/settings";
 import type { AppState, MarpDetection } from "../types";
 
 const OFFSCREEN_URL = "offscreen.html";
@@ -58,8 +59,10 @@ export default defineBackground(() => {
 
     setState("CONNECTING");
     try {
+      // offscreen は chrome.storage を持たないので、ここで読んで渡す
+      const [settings, apiKey] = await Promise.all([getSettings(), getApiKey()]);
       await ensureOffscreen();
-      send("offscreen", { type: "START" });
+      send("offscreen", { type: "OFFSCREEN_START", settings, apiKey });
       // 現在のスライドを Local Context State として取り込む (spec2 §28)
       sendToTab(targetTabId, { type: "DETECT" });
     } catch (e) {

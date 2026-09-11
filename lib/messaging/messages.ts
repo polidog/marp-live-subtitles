@@ -8,6 +8,7 @@ import type {
 import type {
   AppState,
   DebugLog,
+  Settings,
   MarpDetection,
   PresentationContext,
   SubtitleStatus,
@@ -19,6 +20,9 @@ export type ExtensionMessage =
   // popup/options -> background
   | { type: "START" }
   | { type: "STOP" }
+  // background -> offscreen。offscreen document は chrome.runtime 以外の拡張 API を
+  // 使えない（chrome.storage が無い）ため、設定は background が読んで渡す。
+  | { type: "OFFSCREEN_START"; settings: Settings; apiKey: string }
   | { type: "GET_STATUS" }
   // background -> content (Marp 検出問い合わせ)
   | { type: "DETECT" }
