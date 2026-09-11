@@ -9,8 +9,15 @@ Japanese Speech → Chrome Microphone → AudioWorklet (16kHz PCM16)
   → Gemini Live Translation → outputTranscription → Subtitle State → Marp Overlay
 ```
 
-翻訳バックエンドは Google Gemini Live Translation（`gemini-3.5-live-translate-preview`）。
+翻訳バックエンドは Google Gemini Live API。
 Gemini は `responseModalities: ["AUDIO"]` で動かしつつ、`outputAudioTranscription` から翻訳テキストだけを取り出す。翻訳音声は MVP では破棄する。
+
+setup の組み立ては 2 段構え：
+
+1. spec2 §6 の `translationConfig`（Live Translate 専用フィールド）
+2. サーバーが `Unknown name "translationConfig"` で弾いたら、`systemInstruction` に spec §19 の翻訳プロンプトを入れて張り直す（spec2 §29 の代替戦略）。通常の Live モデルはこちらで動く
+
+どちらが使われたかは background のコンソールの `[MLS] offscreen: setup 送信 ok — ..., strategy: ...` に出る。モデル名は Options の「この API Key で使える Live モデルを取得」で `bidiGenerateContent` 対応のものを引ける。
 
 ## セットアップ
 

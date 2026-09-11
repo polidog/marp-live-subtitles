@@ -15,10 +15,16 @@ import {
   RECONNECT_DELAYS_MS,
   RECONNECT_MAX_MS,
   SETUP_TIMEOUT_MS,
+  type SetupStrategy,
 } from "./config";
 import { classify, translationError } from "./errors";
 import { trace, traceOnce } from "../../trace";
-import { buildAudioChunk, buildSetup, type GeminiServerEvent } from "./protocol";
+import {
+  buildAudioChunk,
+  buildSetup,
+  unknownSetupField,
+  type GeminiServerEvent,
+} from "./protocol";
 
 export class GeminiLiveTranslationProvider implements TranslationProvider {
   private readonly apiKey: string;
@@ -44,6 +50,8 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
   private sentChunks = 0;
   private droppedChunks = 0;
   private stopped = false;
+  /** translationConfig をサーバーが知らなければ systemInstruction に切り替える */
+  private strategy: SetupStrategy = "translationConfig";
 
   private onInput: (e: TranscriptEvent) => void = () => {};
   private onOutput: (e: TranscriptEvent) => void = () => {};
@@ -71,6 +79,9 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
     client.onEvent((event) => this.handle(event));
     client.onClose((error) => {
       this.ready = false;
+      // error メッセージ経由ですでに張り直しを予約していれば、その後の close は無視する
+      if (this.reconnectTimer) return;
+      if (error && this.fallbackIfUnknownField(error.message)) return;
       if (error) this.onErrorCb(error);
       this.scheduleReconnect();
     });
@@ -80,8 +91,11 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
     this.onStatusCb("CONFIGURING");
     this.setupSentAt = Date.now();
-    client.send(buildSetup(config));
-    trace("setup 送信 ok", `model: ${config.model}, target: ${config.targetLanguage}`);
+    client.send(buildSetup(config, this.strategy));
+    trace(
+      "setup 送信 ok",
+      `model: ${config.model}, target: ${config.targetLanguage}, strategy: ${this.strategy}`,
+    );
 
     // setupComplete が来ないと ready にならず音声を捨て続ける。
     // 黙って無音になるより、時間で切ってエラーにする。
@@ -152,6 +166,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
         break;
 
       case "error": {
+        if (this.fallbackIfUnknownField(event.message)) break;
         const error = classify(event.message);
         this.onErrorCb(error);
         if (!error.recoverable) void this.stop();
@@ -228,6 +243,28 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
    */
   async updateContext(context: PresentationContext): Promise<void> {
     this.context = context;
+  }
+
+  /**
+   * spec2 §6 の translationConfig をサーバーが知らないとき（v1beta の BidiGenerateContent
+   * には無い）、spec2 §29 の代替戦略 = systemInstruction で翻訳を指示する形に切り替えて
+   * すぐ張り直す。エラーとしては扱わない。
+   */
+  private fallbackIfUnknownField(message: string): boolean {
+    const field = unknownSetupField(message);
+    if (field !== "translationConfig" || this.strategy !== "translationConfig") {
+      return false;
+    }
+    this.strategy = "systemInstruction";
+    trace(
+      "setup フォールバック",
+      `サーバーが translationConfig を知らないため systemInstruction で翻訳を指示して張り直す`,
+    );
+    if (this.setupTimer) clearTimeout(this.setupTimer);
+    this.setupTimer = null;
+    this.attempt = 0;
+    this.scheduleReconnect();
+    return true;
   }
 
   /** spec2 §39 — 1, 2, 4, 8 sec（上限 10 sec） */

@@ -21,6 +21,9 @@ export default function App() {
   const [apiKey, setApiKeyInput] = useState("");
   /** 実際に chrome.storage.local に入っている値（入力中の state と区別する） */
   const [storedKey, setStoredKey] = useState("");
+  /** bidiGenerateContent (Live API) に対応するモデル名。鍵で ListModels して絞る */
+  const [liveModels, setLiveModels] = useState<string[] | null>(null);
+  const [modelsError, setModelsError] = useState<string>();
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [permission, setPermission] = useState<string>("unknown");
   const [grantError, setGrantError] = useState<string>();
@@ -71,6 +74,30 @@ export default function App() {
     }
   };
 
+  /** モデル名の当て推量をやめる。鍵で使える Live 対応モデルを API から引く。 */
+  const loadLiveModels = async () => {
+    setModelsError(undefined);
+    setLiveModels(null);
+    if (!storedKey) return setModelsError("先に API Key を保存してください");
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?pageSize=500&key=${encodeURIComponent(storedKey)}`,
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+      const names = ((json.models ?? []) as Array<{
+        name: string;
+        supportedGenerationMethods?: string[];
+      }>)
+        .filter((m) => m.supportedGenerationMethods?.includes("bidiGenerateContent"))
+        .map((m) => m.name.replace(/^models\//, ""));
+      setLiveModels(names);
+      if (names.length === 0) setModelsError("この API Key で使える Live 対応モデルがありません");
+    } catch (e) {
+      setModelsError(`取得に失敗: ${(e as Error).message}`);
+    }
+  };
+
   /** 1 文字ごとに保存すると途中の値が生きてしまうので、入力が止まってから書く */
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onApiKeyChange = (value: string) => {
@@ -100,11 +127,38 @@ export default function App() {
         </select>
       </Field>
       <Field label="Model">
-        <input
-          style={s.wide}
-          value={settings.model}
-          onChange={(e) => update({ model: e.target.value })}
-        />
+        <div>
+          <input
+            style={s.wide}
+            list="live-models"
+            value={settings.model}
+            onChange={(e) => update({ model: e.target.value })}
+          />
+          <datalist id="live-models">
+            {(liveModels ?? []).map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <button style={{ ...s.button, marginTop: 6 }} onClick={loadLiveModels}>
+            この API Key で使える Live モデルを取得
+          </button>
+          {modelsError && <div style={s.error}>{modelsError}</div>}
+          {liveModels && liveModels.length > 0 && (
+            <div style={s.note}>
+              {liveModels.map((m) => (
+                <div key={m}>
+                  <button
+                    style={{ ...s.link, marginRight: 6 }}
+                    onClick={() => update({ model: m })}
+                  >
+                    使う
+                  </button>
+                  <code>{m}</code>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Field>
       <Field label="Source Language">
         <div>
@@ -350,6 +404,14 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   note: { color: "#6b7280", fontSize: 12, marginTop: 4 },
+  link: {
+    background: "none",
+    border: 0,
+    color: "#2563eb",
+    cursor: "pointer",
+    padding: 0,
+    fontSize: 12,
+  },
   error: {
     color: "#991b1b",
     background: "#fee2e2",

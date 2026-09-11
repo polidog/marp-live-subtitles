@@ -22,6 +22,9 @@ export function classify(message: string, closeCode?: number): TranslationError 
   if (/RESOURCE_EXHAUSTED|429|quota|rate limit/i.test(m)) {
     return translationError("RATE_LIMITED", `レート制限に達しました: ${m}`, true);
   }
+  if (/Invalid JSON payload|Unknown name|Cannot find field/i.test(m)) {
+    return translationError("SESSION_FAILED", `setup がサーバーに受け付けられません: ${m}`);
+  }
   if (/model|not found|404|INVALID_ARGUMENT/i.test(m)) {
     return translationError("SESSION_FAILED", `セッションを開始できません: ${m}`);
   }

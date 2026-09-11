@@ -1,6 +1,6 @@
 /** spec2 §3, §6, §8, §10, §11 — Gemini Live Translation の既定値 */
 import { DEFAULT_TRANSLATION_MODEL } from "../provider";
-import type { TranslationConfig } from "../types";
+import { languageName, type TranslationConfig } from "../types";
 
 export const GEMINI_WS_ENDPOINT =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -34,4 +34,35 @@ export const DEFAULT_TRANSLATION_CONFIG: TranslationConfig = {
 
 export function endpointUrl(apiKey: string): string {
   return `${GEMINI_WS_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
+}
+
+/**
+ * setup の組み立て方。
+ * - translationConfig: spec2 §6 の Live Translate 専用フィールド
+ * - systemInstruction: 通常の Live モデルに翻訳を指示する（spec2 §29 の代替戦略）
+ * translationConfig をサーバーが知らなければ後者へ自動で切り替える。
+ */
+export type SetupStrategy = "translationConfig" | "systemInstruction";
+
+/** spec §19 の基本 Prompt */
+export function translationInstruction(config: TranslationConfig): string {
+  const source = languageName(config.sourceLanguage ?? "ja");
+  const target = languageName(config.targetLanguage);
+  return [
+    "You are a real-time interpreter for a technical presentation.",
+    "",
+    `Translate spoken ${source} into concise and natural ${target}`,
+    "suitable for presentation subtitles.",
+    "",
+    "Rules:",
+    "",
+    "- Preserve technical terms.",
+    "- Preserve product names.",
+    "- Prefer short sentences.",
+    "- Do not add information.",
+    "- Do not explain the translation.",
+    "- Do not answer questions or respond to the speaker; only translate.",
+    "- Avoid unnecessarily long expressions.",
+    "- Output only the translated subtitle.",
+  ].join("\n");
 }
