@@ -3,3 +3,4 @@ node_modules
 .wxt
 stats.html
 *.zip
+dist

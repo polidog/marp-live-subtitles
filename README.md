@@ -25,6 +25,7 @@ setup の組み立ては 2 段構え：
 pnpm install
 pnpm dev          # 開発用 Chrome を起動（HMR あり）
 pnpm build        # .output/chrome-mv3 に production build
+pnpm build:embed  # dist/live-subtitles.js（拡張なしでスライドに埋め込む版）
 pnpm test         # Translation Committer のテスト
 pnpm compile      # 型チェック
 ```
@@ -47,6 +48,39 @@ Marp HTML の作り方:
 npx @marp-team/marp-cli slide.md --html -o slide.html
 ```
 
+## 拡張なしで使う（Marp の HTML に埋め込む）
+
+同じ字幕を、Chrome Extension を入れずにスライド側の `<script>` だけで出せる。
+
+```bash
+pnpm build:embed        # dist/live-subtitles.js（1 ファイル）
+```
+
+Marp の Markdown にタグを 1 行入れて、`--html` でビルドする。
+
+```markdown
+<script src="./live-subtitles.js" data-target-lang="en"></script>
+```
+
+```bash
+marp slide.md --html -o slide.html
+marp -s .               # http://localhost:8080 で配る
+```
+
+**`file://` では動かない。** Chrome はページからのマイク取得を `file://` で拒否するので、
+`marp -s` などで `http://localhost` 経由にする（拡張版が offscreen document を持っているのは、
+この制限を迂回して `file://` のスライドでもマイクを開くため）。
+
+- **Shift+S** で開始 / 停止。`window.liveSubtitles.start()` / `.stop()` でも叩ける
+- API Key は `data-api-key="..."`、または `localStorage.setItem("mls:apiKey", "...")`。
+  デッキを公開する場合、`data-api-key` に書いた Key はそのまま漏れる
+- `data-*` は Settings のキーがそのまま入る（`data-font-size="36"`, `data-mode="both"`,
+  `data-provider="webspeech-gemini-text"`, `data-auto-start` など）
+- 接続中とエラーは右上に小さく出る
+
+拡張版との違いは 3 つだけ: 自分が書き出したデッキにしか効かない / `file://` 不可 /
+設定 UI の代わりに `data-*`。翻訳・字幕まわりの実装 (`lib/translation`, `components`) は共通。
+
 ## 字幕モード
 
 - **Translation Only**（既定）— 英語字幕のみ
@@ -63,11 +97,15 @@ entrypoints/
   content.tsx       Marp 検出・字幕描画・fullscreen 追従 (spec §8, §28)
   offscreen/        マイク + Translation Provider (spec §16, spec2 §7)
   popup/  options/  UI (spec §26-27, spec2 §34-35)
-components/Subtitle.tsx
+components/
+  Subtitle.tsx          字幕の見た目
+  SubtitleOverlay.tsx   ロールアップ / hold / fade（拡張と embed で共通）
+embed/main.tsx          Marp の HTML に直接読み込む版 (pnpm build:embed)
 lib/
   audio/capture.ts               getUserMedia → AudioWorklet → 16kHz PCM16 100ms チャンク
   translation/provider.ts        TranslationProvider インターフェース + factory (spec2 §4)
   translation/types.ts           TranslationConfig / TranscriptEvent / TranslationError (spec2 §5, §16, §38)
+  translation/pipeline.ts        マイク → Provider → Committer の Start/Stop (offscreen と embed で共通)
   translation/committer.ts       partial / stable / final、duplicate & stale 抑制 (spec2 §20-23)
   translation/gemini/
     provider.ts   GeminiLiveTranslationProvider（ターン管理・latency・再接続）
