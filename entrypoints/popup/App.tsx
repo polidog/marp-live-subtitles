@@ -24,14 +24,14 @@ const STATE_LABEL: Record<AppState, string> = {
 };
 
 const DOT: Record<AppState, string> = {
-  IDLE: "#94a3b8",
-  REQUESTING_PERMISSION: "#f59e0b",
-  CONNECTING: "#f59e0b",
-  LISTENING: "#e11d48",
-  TRANSLATING: "#e11d48",
-  RECONNECTING: "#f59e0b",
-  ERROR: "#dc2626",
-  STOPPING: "#94a3b8",
+  IDLE: "",
+  REQUESTING_PERMISSION: "warn",
+  CONNECTING: "warn",
+  LISTENING: "live",
+  TRANSLATING: "live",
+  RECONNECTING: "warn",
+  ERROR: "danger",
+  STOPPING: "",
 };
 
 const RUNNING: AppState[] = ["CONNECTING", "LISTENING", "TRANSLATING", "RECONNECTING"];
@@ -127,180 +127,132 @@ export default function App() {
   };
 
   return (
-    <div style={s.root}>
-      <div style={s.title}>Marp Live Subtitles</div>
-
-      <div style={s.row}>
-        <span
-          style={{ ...s.dot, background: detection?.detected ? "#16a34a" : "#94a3b8" }}
-        />
-        <span>
-          {detection == null
-            ? "検出中…"
-            : detection.detected
-              ? `Marp detected (${detection.slideCount} slides)`
-              : "Marp presentation not detected."}
+    <div className="pop">
+      <div className="pop-head">
+        <span className="title">Marp Live Subtitles</span>
+        <span className="pill">
+          <span className={`dot ${DOT[state]}`} />
+          {running && state !== "CONNECTING" ? "LIVE" : STATE_LABEL[state]}
         </span>
       </div>
 
-      {!micGranted && (
-        <div style={s.warn}>
-          Microphone permission is required.
-          <button style={s.link} onClick={() => chrome.runtime.openOptionsPage()}>
-            Options で許可
-          </button>
-          <button style={s.link} onClick={openMicSiteSettings}>
-            Chrome のサイト設定でマイクを「許可」にする
-          </button>
+      <div className="pop-card">
+        <div className="row">
+          <span className={`dot ${detection?.detected ? "ok" : ""}`} />
+          <span style={{ fontSize: 12 }}>
+            {detection == null
+              ? "検出中…"
+              : detection.detected
+                ? `Marp detected · ${detection.slideCount} slides`
+                : "Marp presentation not detected"}
+          </span>
         </div>
-      )}
 
-      <label style={s.label}>Microphone</label>
-      <select
-        style={s.select}
-        value={settings.micDeviceId}
-        disabled={running}
-        onChange={async (e) => {
-          setSettings(await patchSettings({ micDeviceId: e.target.value }));
-        }}
-      >
-        <option value="">Default Microphone</option>
-        {mics.map((m) => (
-          <option key={m.deviceId} value={m.deviceId}>
-            {m.label || m.deviceId.slice(0, 8)}
-          </option>
-        ))}
-      </select>
+        {!micGranted && (
+          <div className="warn">
+            Microphone permission is required.
+            <button className="link" onClick={() => chrome.runtime.openOptionsPage()}>
+              Options で許可
+            </button>
+            <button className="link" onClick={openMicSiteSettings}>
+              Chrome のサイト設定でマイクを「許可」にする
+            </button>
+          </div>
+        )}
 
-      <div style={s.langs}>
-        {languageName(settings.sourceLang)} → {languageName(settings.targetLang)}
+        <div>
+          <div className="label">Microphone</div>
+          <select
+            value={settings.micDeviceId}
+            disabled={running}
+            onChange={async (e) => {
+              setSettings(await patchSettings({ micDeviceId: e.target.value }));
+            }}
+          >
+            <option value="">Default Microphone</option>
+            {mics.map((m) => (
+              <option key={m.deviceId} value={m.deviceId}>
+                {m.label || m.deviceId.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="lang-pair">
+          <span>{languageName(settings.sourceLang)}</span>
+          <span className="arrow">→</span>
+          <span>{languageName(settings.targetLang)}</span>
+        </div>
       </div>
 
-      {/* spec2 §41 — 開始前に送信先を明示する */}
-      {!running && (
-        <div style={s.privacy}>
-          Audio will be streamed to Google Gemini for real-time translation.
-        </div>
-      )}
-
       <button
-        style={{ ...s.button, background: running ? "#dc2626" : "#111827" }}
+        className={`btn btn-block ${running ? "btn-danger" : "btn-primary"}`}
         onClick={() => send("background", { type: running ? "STOP" : "START" })}
       >
         {running ? "Stop" : "Start Subtitles"}
       </button>
 
-      <label style={s.label}>Status</label>
-      <div style={s.row}>
-        <span style={{ ...s.dot, background: DOT[state] }} />
-        <span>{running && state !== "CONNECTING" ? "LIVE" : STATE_LABEL[state]}</span>
-      </div>
+      {/* spec2 §41 — 開始前に送信先を明示する */}
+      {!running && (
+        <div className="privacy">
+          Audio will be streamed to Google Gemini for real-time translation.
+        </div>
+      )}
 
       {settings.showLatency && latencyMs != null && running && (
-        <>
-          <label style={s.label}>Latency</label>
-          <div>{latencyMs} ms</div>
-        </>
+        <div className="pop-card">
+          <div className="kv">
+            <span className="label">Latency</span>
+            <span className="v">{latencyMs} ms</span>
+          </div>
+        </div>
       )}
 
       {/* spec2 §35 — Debug UI */}
       {settings.debug && (
-        <div style={s.debug}>
-          <div style={s.debugTitle}>{settings.model}</div>
-          <label style={s.label}>Input</label>
-          <div style={s.debugText}>{input || "—"}</div>
-          <label style={s.label}>Output</label>
-          <div style={s.debugText}>{output || "—"}</div>
-          <label style={s.label}>Audio</label>
-          <div style={s.debugText}>{AUDIO_FORMAT_LABEL}</div>
-          <button style={{ ...s.button, marginTop: 8 }} onClick={sendTestSubtitle}>
-            テスト字幕を表示
-          </button>
+        <div className="pop-card">
+          <div className="kv">
+            <span className="label">Debug</span>
+            <code>{settings.model}</code>
+          </div>
+          <div>
+            <div className="label">Input</div>
+            <div className="debug-text">{input || "—"}</div>
+          </div>
+          <div>
+            <div className="label">Output</div>
+            <div className="debug-text">{output || "—"}</div>
+          </div>
+          <div>
+            <div className="label">Audio</div>
+            <div className="debug-text">{AUDIO_FORMAT_LABEL}</div>
+          </div>
+          <div>
+            <button className="btn" onClick={sendTestSubtitle}>
+              テスト字幕を表示
+            </button>
+          </div>
         </div>
       )}
 
       {error && (
-        <div style={s.error}>
+        <div className="error">
           {error}
           {errorCode === "MIC_PERMISSION_DENIED" && (
-            <button style={s.link} onClick={openMicSiteSettings}>
-              Chrome のサイト設定でマイクを「許可」にする
-            </button>
+            <div>
+              <button className="link" onClick={openMicSiteSettings}>
+                Chrome のサイト設定でマイクを「許可」にする
+              </button>
+            </div>
           )}
         </div>
       )}
 
-      <button style={s.link} onClick={() => chrome.runtime.openOptionsPage()}>
-        Options
-      </button>
+      <div className="pop-foot">
+        <button className="link" onClick={() => chrome.runtime.openOptionsPage()}>
+          ⚙ Options
+        </button>
+      </div>
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    width: 260,
-    padding: 14,
-    font: '13px/1.5 system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif',
-    color: "#111827",
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  title: { fontWeight: 700, fontSize: 14, marginBottom: 4 },
-  row: { display: "flex", alignItems: "center", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: "50%", flex: "0 0 auto" },
-  label: { fontSize: 11, color: "#6b7280", marginTop: 6 },
-  select: { width: "100%", padding: 4 },
-  langs: { marginTop: 8, color: "#374151" },
-  privacy: {
-    marginTop: 6,
-    fontSize: 11,
-    color: "#6b7280",
-    background: "#f3f4f6",
-    borderRadius: 6,
-    padding: 6,
-  },
-  button: {
-    marginTop: 10,
-    padding: "8px 12px",
-    color: "#fff",
-    border: 0,
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  link: {
-    marginTop: 8,
-    background: "none",
-    border: 0,
-    color: "#2563eb",
-    cursor: "pointer",
-    padding: 0,
-    textAlign: "left",
-    fontSize: 12,
-  },
-  warn: { background: "#fef3c7", padding: 6, borderRadius: 6, fontSize: 12 },
-  debug: {
-    marginTop: 10,
-    padding: 8,
-    borderRadius: 6,
-    border: "1px solid #e5e7eb",
-    background: "#fafafa",
-  },
-  debugTitle: { fontSize: 11, fontWeight: 600, color: "#374151" },
-  debugText: {
-    fontSize: 12,
-    wordBreak: "break-word",
-    maxHeight: 54,
-    overflow: "hidden",
-  },
-  error: {
-    background: "#fee2e2",
-    color: "#991b1b",
-    padding: 6,
-    borderRadius: 6,
-    fontSize: 12,
-    wordBreak: "break-word",
-  },
-};

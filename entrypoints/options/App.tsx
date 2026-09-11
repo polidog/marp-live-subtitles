@@ -111,60 +111,86 @@ export default function App() {
   };
 
   return (
-    <div style={s.page}>
-      <h1 style={s.h1}>Marp Live Subtitles</h1>
-      {saved && <div style={s.saved}>保存しました</div>}
+    <div className="page">
+      <div className="page-head">
+        <h1>Marp Live Subtitles</h1>
+        <div className="note">変更は自動で保存されます</div>
+      </div>
+      {saved && <div className="toast">保存しました</div>}
 
-      <h2 style={s.h2}>Translation</h2>
-      <Field label="Translation Provider">
-        <select
-          value={settings.provider}
-          onChange={(e) =>
-            update({ provider: e.target.value as Settings["provider"] })
-          }
+      <section className="card">
+        <h2>Translation</h2>
+        <Field
+          label="Gemini API Key"
+          hint="必須。For local development only. Do not distribute builds containing your API key."
         >
-          <option value="gemini-live-translation">Gemini Live Translation</option>
-          <option value="webspeech-gemini-text">
-            Web Speech (Chrome 内蔵) + Gemini テキスト翻訳（安い）
-          </option>
-        </select>
-      </Field>
-      <Field label="Model">
-        <div>
-          <input
-            style={s.wide}
-            list="live-models"
-            value={settings.model}
-            onChange={(e) => update({ model: e.target.value })}
-          />
-          <datalist id="live-models">
-            {(liveModels ?? []).map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
-          <button style={{ ...s.button, marginTop: 6 }} onClick={loadLiveModels}>
-            この API Key で使える Live モデルを取得
-          </button>
-          {modelsError && <div style={s.error}>{modelsError}</div>}
-          {liveModels && liveModels.length > 0 && (
-            <div style={s.note}>
-              {liveModels.map((m) => (
-                <div key={m}>
-                  <button
-                    style={{ ...s.link, marginRight: 6 }}
-                    onClick={() => update({ model: m })}
-                  >
-                    使う
-                  </button>
-                  <code>{m}</code>
-                </div>
-              ))}
+          <div className="stack" style={{ alignItems: "stretch" }}>
+            <input
+              type="password"
+              value={apiKey}
+              placeholder="AIza..."
+              // blur 待ちだと「入力したのに保存されていない」、1 文字ごとだと途中の値が
+              // 生きてしまう。入力が止まってから書く。
+              onChange={(e) => onApiKeyChange(e.target.value)}
+              onBlur={(e) => onApiKeyChange(e.target.value)}
+            />
+            <div className="note">
+              {storedKey
+                ? `保存済み: ${storedKey.slice(0, 6)}…${storedKey.slice(-4)} (${storedKey.length} 文字)`
+                : "未保存"}
             </div>
-          )}
-        </div>
-      </Field>
-      <Field label="Source Language">
-        <div>
+          </div>
+        </Field>
+        <Field label="Provider" hint="Web Speech 側は Chrome 内蔵の音声認識を使うぶん安く済みます">
+          <select
+            value={settings.provider}
+            onChange={(e) =>
+              update({ provider: e.target.value as Settings["provider"] })
+            }
+          >
+            <option value="gemini-live-translation">Gemini Live Translation</option>
+            <option value="webspeech-gemini-text">
+              Web Speech (Chrome 内蔵) + Gemini テキスト翻訳
+            </option>
+          </select>
+        </Field>
+        <Field label="Model" hint="API Key で使える Live 対応モデルを取得して選べます">
+          <div className="stack" style={{ alignItems: "stretch" }}>
+            <input
+              type="text"
+              list="live-models"
+              value={settings.model}
+              onChange={(e) => update({ model: e.target.value })}
+            />
+            <datalist id="live-models">
+              {(liveModels ?? []).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+            <div>
+              <button className="btn" onClick={loadLiveModels}>
+                使える Live モデルを取得
+              </button>
+            </div>
+            {modelsError && <div className="error">{modelsError}</div>}
+            {liveModels && liveModels.length > 0 && (
+              <div className="model-list">
+                {liveModels.map((m) => (
+                  <div key={m} className="row">
+                    <button className="link" onClick={() => update({ model: m })}>
+                      使う
+                    </button>
+                    <code>{m}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
+        <Field
+          label="Source Language"
+          hint="Gemini Live Translation は入力言語を自動判定します。この値は表示と将来の Provider 用です"
+        >
           <select
             value={settings.sourceLang}
             onChange={(e) => update({ sourceLang: e.target.value })}
@@ -175,199 +201,186 @@ export default function App() {
               </option>
             ))}
           </select>
-          <div style={s.note}>
-            Gemini Live Translation は入力言語を自動判定するため、この値は表示と将来の
-            Provider 用です。
-          </div>
-        </div>
-      </Field>
-      <Field label="Target Language">
-        <select
-          value={settings.targetLang}
-          onChange={(e) => update({ targetLang: e.target.value })}
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l} value={l}>
-              {languageName(l)} ({l})
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <h2 style={s.h2}>General</h2>
-      <Field label="Microphone">
-        <select
-          value={settings.micDeviceId}
-          onChange={(e) => update({ micDeviceId: e.target.value })}
-        >
-          <option value="">Default Microphone</option>
-          {mics.map((m) => (
-            <option key={m.deviceId} value={m.deviceId}>
-              {m.label || m.deviceId.slice(0, 8)}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Permission">
-        <div>
-          {permission === "granted" ? (
-            <span style={{ color: "#16a34a" }}>マイク許可済み</span>
-          ) : (
-            <button style={s.button} onClick={grant}>
-              マイクを許可する
-            </button>
-          )}
-          <button
-            style={{ ...s.button, marginLeft: 8 }}
-            onClick={openMicSiteSettings}
-            title="chrome://settings/content/siteDetails でこの拡張のマイクを「許可」に固定する"
+        </Field>
+        <Field label="Target Language">
+          <select
+            value={settings.targetLang}
+            onChange={(e) => update({ targetLang: e.target.value })}
           >
-            Chrome のサイト設定を開く
-          </button>
-          {/* 権限は拡張 ID ごと。dev ビルドと本ビルドでは別扱いになる */}
-          <div style={s.note}>
-            permission: {permission} / extension: {chrome.runtime.id}
-          </div>
-          <div style={s.note}>
-            プロンプトで「今回のみ許可」を選ぶとページを閉じた時点で失効します。
-            字幕は offscreen document から録音するため、「常に許可」が必要です。
-          </div>
-          {grantError && <div style={s.error}>{grantError}</div>}
-        </div>
-      </Field>
+            {LANGUAGES.map((l) => (
+              <option key={l} value={l}>
+                {languageName(l)} ({l})
+              </option>
+            ))}
+          </select>
+        </Field>
+      </section>
 
-      <h2 style={s.h2}>Subtitle</h2>
-      <Field label={`Font Size (${settings.fontSize}px)`}>
-        <input
-          type="range"
-          min={20}
-          max={80}
-          value={settings.fontSize}
-          onChange={(e) => update({ fontSize: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label="Position">
-        <select
-          value={settings.position}
-          onChange={(e) =>
-            update({ position: e.target.value as Settings["position"] })
-          }
+      <section className="card">
+        <h2>Microphone</h2>
+        <Field label="Device">
+          <select
+            value={settings.micDeviceId}
+            onChange={(e) => update({ micDeviceId: e.target.value })}
+          >
+            <option value="">Default Microphone</option>
+            {mics.map((m) => (
+              <option key={m.deviceId} value={m.deviceId}>
+                {m.label || m.deviceId.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field
+          label="Permission"
+          hint="字幕は offscreen document から録音するため「常に許可」が必要です。「今回のみ許可」はページを閉じると失効します"
         >
-          <option value="bottom">bottom</option>
-          <option value="top">top</option>
-        </select>
-      </Field>
-      <Field label={`Opacity (${settings.opacity.toFixed(2)})`}>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={settings.opacity}
-          onChange={(e) => update({ opacity: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label={`Width (${settings.width}vw)`}>
-        <input
-          type="range"
-          min={40}
-          max={100}
-          value={settings.width}
-          onChange={(e) => update({ width: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label="Max Lines">
-        <input
-          type="number"
-          min={1}
-          max={5}
-          value={settings.maxLines}
-          onChange={(e) => update({ maxLines: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label={`Clear After (${(settings.holdMs / 1000).toFixed(1)}s)`}>
-        <input
-          type="range"
-          min={500}
-          max={6000}
-          step={250}
-          value={settings.holdMs}
-          onChange={(e) => update({ holdMs: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label="Original Text">
-        <select
-          value={settings.mode}
-          onChange={(e) => update({ mode: e.target.value as Settings["mode"] })}
-        >
-          <option value="translation">Translation Only</option>
-          <option value="both">Original + Translation</option>
-          <option value="original">Original Only</option>
-        </select>
-      </Field>
+          <div className="stack">
+            <div className="row">
+              {permission === "granted" ? (
+                <span className="row" style={{ color: "var(--ok)", fontWeight: 500 }}>
+                  <span className="dot ok" />
+                  マイク許可済み
+                </span>
+              ) : (
+                <button className="btn btn-primary" onClick={grant}>
+                  マイクを許可する
+                </button>
+              )}
+              <button
+                className="btn"
+                onClick={openMicSiteSettings}
+                title="chrome://settings/content/siteDetails でこの拡張のマイクを「許可」に固定する"
+              >
+                Chrome のサイト設定を開く
+              </button>
+            </div>
+            {/* 権限は拡張 ID ごと。dev ビルドと本ビルドでは別扱いになる */}
+            <div className="note">
+              permission: {permission} / extension: <code>{chrome.runtime.id}</code>
+            </div>
+            {grantError && <div className="error">{grantError}</div>}
+          </div>
+        </Field>
+      </section>
 
-      <h2 style={s.h2}>Advanced</h2>
-      <Field label="Gemini API Key">
-        <div>
+      <section className="card">
+        <h2>Subtitle</h2>
+        <Field label="Font Size" value={`${settings.fontSize}px`}>
           <input
-            style={s.wide}
-            type="password"
-            value={apiKey}
-            placeholder="AIza..."
-            // blur 待ちだと「入力したのに保存されていない」、1 文字ごとだと途中の値が
-            // 生きてしまう。入力が止まってから書く。
-            onChange={(e) => onApiKeyChange(e.target.value)}
-            onBlur={(e) => onApiKeyChange(e.target.value)}
+            type="range"
+            min={20}
+            max={80}
+            value={settings.fontSize}
+            onChange={(e) => update({ fontSize: Number(e.target.value) })}
           />
-          <div style={s.note}>
-            {storedKey
-              ? `保存済み: ${storedKey.slice(0, 6)}…${storedKey.slice(-4)} (${storedKey.length} 文字)`
-              : "未保存"}
-          </div>
-          {/* spec2 §32 */}
-          <div style={s.note}>
-            For local development only. Do not distribute builds containing your API
-            key.
-          </div>
-        </div>
-      </Field>
-      <Field label="Show latency">
-        <input
-          type="checkbox"
-          checked={settings.showLatency}
-          onChange={(e) => update({ showLatency: e.target.checked })}
-        />
-      </Field>
-      <Field label="Debug Mode">
-        <div>
+        </Field>
+        <Field label="Position">
+          <select
+            value={settings.position}
+            onChange={(e) =>
+              update({ position: e.target.value as Settings["position"] })
+            }
+          >
+            <option value="bottom">Bottom</option>
+            <option value="top">Top</option>
+          </select>
+        </Field>
+        <Field label="Background Opacity" value={settings.opacity.toFixed(2)}>
           <input
-            type="checkbox"
-            checked={settings.debug}
-            onChange={(e) => update({ debug: e.target.checked })}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={settings.opacity}
+            onChange={(e) => update({ opacity: Number(e.target.value) })}
           />
-          <span style={s.note}> Popup に Input / Output / Audio を表示する</span>
-        </div>
-      </Field>
-      <Field label="Log Gemini events">
-        <input
-          type="checkbox"
-          checked={settings.logProviderEvents}
-          onChange={(e) => update({ logProviderEvents: e.target.checked })}
-        />
-      </Field>
-      <Field label="Echo target language">
-        <div>
+        </Field>
+        <Field label="Width" value={`${settings.width}vw`}>
           <input
-            type="checkbox"
+            type="range"
+            min={40}
+            max={100}
+            value={settings.width}
+            onChange={(e) => update({ width: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Max Lines" hint="溢れた古い行は上へ流れて消えます">
+          <input
+            type="number"
+            min={1}
+            max={5}
+            value={settings.maxLines}
+            onChange={(e) => update({ maxLines: Number(e.target.value) })}
+          />
+        </Field>
+        <Field
+          label="Clear After"
+          value={`${(settings.holdMs / 1000).toFixed(1)}s`}
+          hint="更新が途切れてから字幕を消すまでの時間"
+        >
+          <input
+            type="range"
+            min={500}
+            max={6000}
+            step={250}
+            value={settings.holdMs}
+            onChange={(e) => update({ holdMs: Number(e.target.value) })}
+          />
+        </Field>
+        <Field
+          label="Min Line Time"
+          value={`${(settings.dwellMs / 1000).toFixed(1)}s`}
+          hint="確定した文を次の文に押し出されるまで最低限置いておく時間。0 で無効"
+        >
+          <input
+            type="range"
+            min={0}
+            max={5000}
+            step={250}
+            value={settings.dwellMs}
+            onChange={(e) => update({ dwellMs: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Original Text">
+          <select
+            value={settings.mode}
+            onChange={(e) => update({ mode: e.target.value as Settings["mode"] })}
+          >
+            <option value="translation">Translation Only</option>
+            <option value="both">Original + Translation</option>
+            <option value="original">Original Only</option>
+          </select>
+        </Field>
+      </section>
+
+      <section className="card">
+        <h2>Advanced</h2>
+        <Field label="Show Latency" hint="字幕の下に遅延を表示する">
+          <Switch
+            checked={settings.showLatency}
+            onChange={(v) => update({ showLatency: v })}
+          />
+        </Field>
+        <Field label="Debug Mode" hint="Popup に Input / Output / Audio を表示する">
+          <Switch checked={settings.debug} onChange={(v) => update({ debug: v })} />
+        </Field>
+        <Field label="Log Gemini Events">
+          <Switch
+            checked={settings.logProviderEvents}
+            onChange={(v) => update({ logProviderEvents: v })}
+          />
+        </Field>
+        <Field label="Echo Target Language" hint="翻訳音声側の設定。MVP では字幕に影響しない">
+          <Switch
             checked={settings.echoTargetLanguage}
-            onChange={(e) => update({ echoTargetLanguage: e.target.checked })}
+            onChange={(v) => update({ echoTargetLanguage: v })}
           />
-          <span style={s.note}> 翻訳音声側の設定。MVP では字幕に影響しない</span>
-        </div>
-      </Field>
+        </Field>
+      </section>
 
       {/* spec2 §41 */}
-      <p style={s.note}>
+      <p className="note">
         Audio will be streamed to Google Gemini for real-time translation.
         Stop を押すと MediaStream / WebSocket / AudioContext / AudioWorklet をすべて停止します。
       </p>
@@ -375,72 +388,35 @@ export default function App() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  value,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  /** スライダーなどの現在値。ラベル横にバッジで出す */
+  value?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div style={s.field}>
-      <label style={s.fieldLabel}>{label}</label>
-      <div>{children}</div>
+    <div className="field">
+      <div className="field-label">
+        {label}
+        {value && <span className="badge">{value}</span>}
+      </div>
+      {hint && <div className="field-hint">{hint}</div>}
+      <div className="field-control">{children}</div>
     </div>
   );
 }
 
-const s: Record<string, React.CSSProperties> = {
-  page: {
-    maxWidth: 720,
-    margin: "0 auto",
-    padding: 24,
-    font: '14px/1.6 system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif',
-    color: "#111827",
-  },
-  h1: { fontSize: 20, margin: "0 0 16px" },
-  h2: {
-    fontSize: 14,
-    margin: "24px 0 8px",
-    paddingBottom: 4,
-    borderBottom: "1px solid #e5e7eb",
-    color: "#374151",
-  },
-  field: {
-    display: "grid",
-    gridTemplateColumns: "200px 1fr",
-    alignItems: "start",
-    gap: 12,
-    padding: "6px 0",
-  },
-  fieldLabel: { color: "#6b7280", fontSize: 13 },
-  wide: { width: "100%", boxSizing: "border-box", padding: 4 },
-  button: {
-    padding: "4px 10px",
-    borderRadius: 6,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    cursor: "pointer",
-  },
-  note: { color: "#6b7280", fontSize: 12, marginTop: 4 },
-  link: {
-    background: "none",
-    border: 0,
-    color: "#2563eb",
-    cursor: "pointer",
-    padding: 0,
-    fontSize: 12,
-  },
-  error: {
-    color: "#991b1b",
-    background: "#fee2e2",
-    fontSize: 12,
-    padding: 6,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  saved: {
-    position: "fixed",
-    top: 12,
-    right: 12,
-    background: "#dcfce7",
-    color: "#166534",
-    padding: "6px 12px",
-    borderRadius: 6,
-    fontSize: 12,
-  },
-};
+function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="switch">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span />
+    </label>
+  );
+}
