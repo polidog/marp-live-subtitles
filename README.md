@@ -98,7 +98,11 @@ stores/settings.ts
 
 **Marp 操作を奪わない** — 字幕は shadow DOM 内の `pointer-events: none` な overlay。キー操作は Marp 側へ素通しする。
 
-**字幕の寿命** — final は 4 秒 hold してから 500 ms かけて fade out。次の字幕が来たら fade をキャンセルする（spec2 §24）。
+**字幕の寿命とロールアップ** — テレビの生字幕と同じ方式。確定した文は下段に流れ込み、`maxLines`（既定 2 行）の表示枠から溢れた古い行は上へ押し出されて消える。1 枚を丸ごと差し替えないので、文の切り替わりで画面が空白にならない。
+
+枠の切り方は CSS だけ（`max-height: maxLines × line-height` + `justify-content: flex-end` + `overflow: hidden`）で、行送りのタイマーは持たない。翻訳中の文は末尾に破線付きで続き、確定すると破線が消えてそのまま定着する。
+
+更新が途切れたときだけ消える: 最後の字幕から 4 秒 hold → 500 ms で fade out（spec2 §24）。次の字幕が来たら fade をキャンセルする。消えたあとは在庫も捨てるので、次の発話は 1 行目から始まる。
 
 ## 未実装
 

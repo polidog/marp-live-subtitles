@@ -1,11 +1,13 @@
-/** spec §10-§13 / spec2 §20, §22, §24 — 字幕 Overlay */
+/** spec §10-§13 / spec2 §20, §22, §24 — 字幕 Overlay（ロールアップ表示） */
 import type { CSSProperties } from "react";
 import type { Settings, SubtitleStatus } from "../types";
 
 export type SubtitleProps = {
   settings: Settings;
-  /** 翻訳字幕 (spec2 §18) */
-  text: string;
+  /** 確定済みの直近の文（古い順）。表示枠から溢れたぶんは上に消える */
+  finals: string[];
+  /** いま翻訳中の文 (spec2 §18) */
+  current: string;
   /** 入力 transcript (spec2 §17) */
   original: string;
   status: SubtitleStatus;
@@ -17,16 +19,18 @@ export type SubtitleProps = {
 
 /** spec2 §22 — partial は少し薄く、final は通常表示 */
 const STATUS_OPACITY: Record<SubtitleStatus, number> = {
-  partial: 0.72,
-  stable: 0.88,
+  partial: 0.7,
+  stable: 0.85,
   final: 1,
 };
 
 export const FADE_MS = 500;
+const LINE_HEIGHT = 1.3;
 
 export function Subtitle({
   settings,
-  text,
+  finals,
+  current,
   original,
   status,
   latencyMs,
@@ -35,9 +39,10 @@ export function Subtitle({
 }: SubtitleProps) {
   const showOriginal = settings.mode === "original" || settings.mode === "both";
   const showTranslation = settings.mode !== "original";
-  const main = showTranslation ? text : original;
+  const hasTranslation = finals.length > 0 || current.length > 0;
 
-  if (!visible || (!main && !showOriginal)) return null;
+  if (!visible) return null;
+  if (!(showTranslation && hasTranslation) && !(showOriginal && original)) return null;
 
   const root: CSSProperties = {
     position: "fixed",
@@ -56,7 +61,7 @@ export function Subtitle({
     fontFamily:
       '"Helvetica Neue", Helvetica, Arial, "Hiragino Sans", "Noto Sans JP", sans-serif',
     textAlign: "center",
-    lineHeight: 1.3,
+    lineHeight: LINE_HEIGHT,
     opacity: fading ? 0 : 1,
     transition: `opacity ${FADE_MS}ms ease-out`,
   };
@@ -67,12 +72,21 @@ export function Subtitle({
     borderRadius: 12,
     padding: "0.4em 0.7em",
     textShadow: "0 2px 6px rgba(0,0,0,0.9)",
-    overflow: "hidden",
-    display: "-webkit-box",
-    WebkitBoxOrient: "vertical" as CSSProperties["WebkitBoxOrient"],
-    WebkitLineClamp: settings.maxLines,
     maxWidth: "100%",
+    boxSizing: "border-box",
   };
+
+  // ロールアップ: 枠を maxLines 行で切り、中身を下揃えにする。
+  // 溢れた古い行は上にはみ出して clip される = 新しい文が下から押し上げる動きになる。
+  const PADDING_EM = 0.8; // box の上下 padding 合計
+  const rollupFor = (lines: number): CSSProperties => ({
+    maxHeight: `${lines * LINE_HEIGHT + PADDING_EM}em`,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    // 下揃え。溢れた古い行は上にはみ出して clip される = ロールアップ
+    justifyContent: "flex-end",
+  });
 
   return (
     <div id="marp-live-subtitles-root" style={root}>
@@ -84,27 +98,42 @@ export function Subtitle({
             fontSize: Math.round(settings.fontSize * 0.55),
             opacity: 0.85,
             fontWeight: 400,
+            // 原文は 1 文だけなので行数を抑える
+            ...rollupFor(2),
           }}
         >
-          {original}
+          <div>{original}</div>
         </div>
       ) : null}
 
-      {main ? (
+      {showTranslation && hasTranslation ? (
         <div
           className="subtitle"
           style={{
             ...box,
+            ...rollupFor(settings.maxLines),
             fontSize: settings.fontSize,
             fontWeight: 600,
-            opacity: STATUS_OPACITY[status],
-            borderBottom:
-              status === "partial"
-                ? "2px dashed rgba(255,255,255,0.45)"
-                : "2px solid transparent",
           }}
         >
-          {main}
+          <div>
+            {finals.join(" ")}
+            {finals.length > 0 && current ? " " : ""}
+            {current ? (
+              <span
+                style={{
+                  opacity: STATUS_OPACITY[status],
+                  // 暫定は破線で示す (spec2 §22)
+                  borderBottom:
+                    status === "final"
+                      ? undefined
+                      : "2px dashed rgba(255,255,255,0.45)",
+                }}
+              >
+                {current}
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

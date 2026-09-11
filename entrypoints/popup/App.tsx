@@ -94,19 +94,32 @@ export default function App() {
 
   const running = RUNNING.includes(state);
 
-  /** Gemini を経由せず content script の描画だけを確かめる (Debug Mode 専用) */
+  /**
+   * Gemini を経由せず content script の描画だけを確かめる (Debug Mode 専用)。
+   * ロールアップ（古い行が上へ流れる動き）も見えるよう数文を順に送る。
+   */
   const sendTestSubtitle = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return setError("対象タブが見つかりません");
+
+    const script: Array<[string, string, "final" | "partial"]> = [
+      ["今日は新しいサービスを紹介します", "Today, I'd like to introduce our new service.", "final"],
+      ["このサービスは Redis を使っています", "This service uses Redis.", "final"],
+      ["まず全体の構成から説明します", "Let me start with the overall architecture", "partial"],
+    ];
+
     try {
-      await chrome.tabs.sendMessage(tab.id, {
-        target: "content",
-        type: "SUBTITLE",
-        status: "final",
-        original: "今日は新しいサービスを紹介します",
-        text: "Today, I'd like to introduce our new service.",
-        latencyMs: 840,
-      });
+      for (const [original, text, status] of script) {
+        await chrome.tabs.sendMessage(tab.id, {
+          target: "content",
+          type: "SUBTITLE",
+          status,
+          original,
+          text,
+          latencyMs: 840,
+        });
+        await new Promise((r) => setTimeout(r, 900));
+      }
       setError(undefined);
     } catch (e) {
       setError(`content script に届きません: ${(e as Error)?.message ?? e}`);

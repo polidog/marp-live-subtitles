@@ -12,14 +12,21 @@ import { trace, traceOnce } from "../lib/trace";
 import { DEFAULT_SETTINGS, getSettings, watchSettings } from "../stores/settings";
 import type { Settings, SubtitleStatus } from "../types";
 
-/** spec2 §24 — final 字幕を保持する時間 */
+/** spec2 §24 — 最後の字幕を保持する時間。話し続けている間は消さない */
 const HOLD_MS = 4000;
 /** partial のまま更新が途切れた場合の保険 */
 const IDLE_HIDE_MS = 8000;
+/**
+ * 画面に残す確定文の数。ロールアップ表示では maxLines で切られるので、
+ * ここは「切られる前の在庫」。多すぎても無駄なので少しだけ持つ。
+ */
+const MAX_FINALS = 3;
 
 function SubtitleApp() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [text, setText] = useState("");
+  /** 確定済みの直近の文（古い順）。新しい文は下に流れ込み、古い文は上に消える */
+  const [finals, setFinals] = useState<string[]>([]);
+  const [current, setCurrent] = useState("");
   const [original, setOriginal] = useState("");
   const [status, setStatus] = useState<SubtitleStatus>("partial");
   const [latencyMs, setLatencyMs] = useState<number | undefined>();
@@ -45,25 +52,45 @@ function SubtitleApp() {
         // 次の字幕が来たら fade をキャンセルする (spec2 §24)
         clearTimers();
         setFading(false);
-        setText(msg.text);
+
+        if (msg.status === "final") {
+          // 確定した文は下段へ積む。表示枠から溢れたぶんは CSS 側で上に消える。
+          setFinals((prev) =>
+            prev[prev.length - 1] === msg.text
+              ? prev
+              : [...prev, msg.text].slice(-MAX_FINALS),
+          );
+          setCurrent("");
+        } else {
+          setCurrent(msg.text);
+        }
+
         setOriginal(msg.original);
         setStatus(msg.status);
         if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
         setVisible(true);
 
-        // final -> HOLD -> FADE OUT
+        // 更新が途切れたら HOLD -> FADE OUT (spec2 §24)
         const hold = msg.status === "final" ? HOLD_MS : IDLE_HIDE_MS;
         timers.current.push(
           setTimeout(() => {
             setFading(true);
-            timers.current.push(setTimeout(() => setVisible(false), FADE_MS));
+            timers.current.push(
+              setTimeout(() => {
+                setVisible(false);
+                // 消えたあとは在庫も捨てる。次の発話は 1 行目から始まる。
+                setFinals([]);
+                setCurrent("");
+              }, FADE_MS),
+            );
           }, hold),
         );
       } else if (msg.type === "CLEAR") {
         clearTimers();
         setVisible(false);
         setFading(false);
-        setText("");
+        setFinals([]);
+        setCurrent("");
         setOriginal("");
         setLatencyMs(undefined);
       }
@@ -75,7 +102,8 @@ function SubtitleApp() {
   return (
     <Subtitle
       settings={settings}
-      text={text}
+      finals={finals}
+      current={current}
       original={original}
       status={status}
       latencyMs={latencyMs}
