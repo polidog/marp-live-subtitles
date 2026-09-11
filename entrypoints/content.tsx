@@ -7,10 +7,13 @@ import { FADE_MS, Subtitle } from "../components/Subtitle";
 import { toPresentationContext } from "../lib/marp/context";
 import { detectMarp } from "../lib/marp/detector";
 import { getDeckContexts, getSlideContext, watchSlideChange } from "../lib/marp/slide";
-import { onMessage, send } from "../lib/messaging/messages";
+import { type ExtensionMessage, onMessage, send } from "../lib/messaging/messages";
+import { RollupQueue } from "../lib/subtitle/rollup";
 import { trace, traceOnce } from "../lib/trace";
 import { DEFAULT_SETTINGS, getSettings, watchSettings } from "../stores/settings";
 import type { Settings, SubtitleStatus } from "../types";
+
+type SubtitleMsg = Extract<ExtensionMessage, { type: "SUBTITLE" }>;
 
 /**
  * spec2 §24 — 最後の字幕を保持する時間は settings.holdMs（既定 1.0 秒）。
@@ -37,9 +40,11 @@ function SubtitleApp() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // onMessage の購読は初回だけ張るので、設定は ref 経由で読む
   const holdMs = useRef(DEFAULT_SETTINGS.holdMs);
+  const dwellMs = useRef(DEFAULT_SETTINGS.dwellMs);
   useEffect(() => {
     holdMs.current = settings.holdMs;
-  }, [settings.holdMs]);
+    dwellMs.current = settings.dwellMs;
+  }, [settings.holdMs, settings.dwellMs]);
 
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
@@ -51,48 +56,58 @@ function SubtitleApp() {
     return watchSettings(setSettings);
   }, []);
 
+  // 行送りの最短間隔を挟んで反映する。購読は初回だけなので中身は ref 経由で呼ぶ。
+  const applyRef = useRef((_msg: SubtitleMsg) => {});
+  const [rollup] = useState(
+    () => new RollupQueue<SubtitleMsg>((msg) => applyRef.current(msg), () => dwellMs.current),
+  );
+  applyRef.current = (msg) => {
+    if (msg.status === "final") {
+      // 確定した文は下段へ積む。表示枠から溢れたぶんは CSS 側で上に消える。
+      setFinals((prev) =>
+        prev[prev.length - 1] === msg.text
+          ? prev
+          : [...prev, msg.text].slice(-MAX_FINALS),
+      );
+      setCurrent("");
+    } else {
+      setCurrent(msg.text);
+    }
+
+    setOriginal(msg.original);
+    setStatus(msg.status);
+    if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
+    setVisible(true);
+
+    // 更新が途切れたら HOLD -> FADE OUT (spec2 §24)
+    const hold =
+      msg.status === "final" ? holdMs.current : holdMs.current * IDLE_FACTOR;
+    timers.current.push(
+      setTimeout(() => {
+        setFading(true);
+        timers.current.push(
+          setTimeout(() => {
+            setVisible(false);
+            // 消えたあとは在庫も捨てる。次の発話は 1 行目から始まる。
+            setFinals([]);
+            setCurrent("");
+          }, FADE_MS),
+        );
+      }, hold),
+    );
+  };
+
   useEffect(() => {
     return onMessage("content", (msg) => {
       if (msg.type === "SUBTITLE") {
         traceOnce("first-render", "最初の SUBTITLE を受信して描画", msg.text.slice(0, 40));
-        // 次の字幕が来たら fade をキャンセルする (spec2 §24)
+        // 次の字幕が来たら fade をキャンセルする (spec2 §24)。
+        // 行送り待ちの間も、前の行を消さずに置いておく。
         clearTimers();
         setFading(false);
-
-        if (msg.status === "final") {
-          // 確定した文は下段へ積む。表示枠から溢れたぶんは CSS 側で上に消える。
-          setFinals((prev) =>
-            prev[prev.length - 1] === msg.text
-              ? prev
-              : [...prev, msg.text].slice(-MAX_FINALS),
-          );
-          setCurrent("");
-        } else {
-          setCurrent(msg.text);
-        }
-
-        setOriginal(msg.original);
-        setStatus(msg.status);
-        if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
-        setVisible(true);
-
-        // 更新が途切れたら HOLD -> FADE OUT (spec2 §24)
-        const hold =
-          msg.status === "final" ? holdMs.current : holdMs.current * IDLE_FACTOR;
-        timers.current.push(
-          setTimeout(() => {
-            setFading(true);
-            timers.current.push(
-              setTimeout(() => {
-                setVisible(false);
-                // 消えたあとは在庫も捨てる。次の発話は 1 行目から始まる。
-                setFinals([]);
-                setCurrent("");
-              }, FADE_MS),
-            );
-          }, hold),
-        );
+        rollup.push(msg);
       } else if (msg.type === "CLEAR") {
+        rollup.clear();
         clearTimers();
         setVisible(false);
         setFading(false);
@@ -104,7 +119,13 @@ function SubtitleApp() {
     });
   }, []);
 
-  useEffect(() => clearTimers, []);
+  useEffect(
+    () => () => {
+      rollup.clear();
+      clearTimers();
+    },
+    [],
+  );
 
   return (
     <Subtitle

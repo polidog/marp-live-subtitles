@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxLines: 2,
   mode: "translation",
   holdMs: 1000,
+  dwellMs: 1500,
 
   provider: "gemini-live-translation",
   model: DEFAULT_TRANSLATION_MODEL,

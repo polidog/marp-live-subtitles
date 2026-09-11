@@ -56,6 +56,8 @@ export type Settings = {
   mode: SubtitleMode;
   /** 更新が途切れてから字幕を消すまでの間 (spec2 §24) */
   holdMs: number;
+  /** 確定した文を次の文に押し出されるまで最低限置いておく時間。0 で無効 */
+  dwellMs: number;
 
   provider: TranslationProviderId;
   model: string;
