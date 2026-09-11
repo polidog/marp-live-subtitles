@@ -1,7 +1,0 @@
-# スライドと live-subtitles.js を Cloudflare で配るだけの設定。Worker のコードは無し。
-# https にさえ載れば埋め込み版のマイクが開く（file:// では開けない）。
-name = "marp-live-subtitles"
-compatibility_date = "2026-09-11"
-
-# site/ の中身をそのまま配信する。index.html に書き出したデッキを置く。
-assets = { directory = "./site" }

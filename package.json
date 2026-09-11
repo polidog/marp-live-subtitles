@@ -10,8 +10,6 @@
     "compile": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "build:embed": "vite build --config vite.embed.config.ts",
-    "build:site": "pnpm build:embed && mkdir -p site && cp dist/live-subtitles.js site/",
-    "deploy": "pnpm build:site && pnpm dlx wrangler deploy",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

@@ -78,17 +78,19 @@ marp -s .               # http://localhost:8080 で配る
   `data-provider="webspeech-gemini-text"`, `data-auto-start` など）
 - 接続中とエラーは右上に小さく出る
 
-### Cloudflare で配る
+### GitHub Pages で配る
 
-`file://` を避けるいちばん楽な方法。Worker のコードは書かない（静的配信だけ）。
+`file://` を避けるいちばん楽な方法。main に push すると `.github/workflows/pages.yml` が
+`live-subtitles.js` をビルドして Pages に上げる（リポジトリの Settings → Pages → Source を
+"GitHub Actions" にしておく）。
 
-```bash
-mkdir -p site
-marp slide.md --html -o site/index.html   # デッキを site/ に書き出す
-pnpm deploy                               # build:embed → site/ にコピー → wrangler deploy
+デッキ側はその URL を読むだけ。デッキ自体はどこに置いてもいい。
+
+```markdown
+<script src="https://polidog.github.io/marp-live-subtitles/live-subtitles.js" data-target-lang="en"></script>
 ```
 
-初回だけ `pnpm dlx wrangler login`。`site/` は成果物置き場なので git には入れない。
+デッキも Pages に置けば https になるので、マイクが開く（`marp -s` もローカルサーバも要らない）。
 
 公開デッキなので **API Key は `data-api-key` に書かない**。発表する端末で一度だけ:
 
@@ -96,7 +98,8 @@ pnpm deploy                               # build:embed → site/ にコピー �
 localStorage.setItem("mls:apiKey", "AIza...")
 ```
 
-Key 自体をデッキから消したい場合は、同じ Worker に短命トークンを返すエンドポイントを足す形になる（未実装）。
+Key 自体をデッキから消したい場合は、短命トークンを返すエンドポイントが要る（未実装。
+Pages は静的配信だけなので、その時は別途 Worker などが要る）。
 
 拡張版との違いは 3 つだけ: 自分が書き出したデッキにしか効かない / `file://` 不可 /
 設定 UI の代わりに `data-*`。翻訳・字幕まわりの実装 (`lib/translation`, `components`) は共通。
