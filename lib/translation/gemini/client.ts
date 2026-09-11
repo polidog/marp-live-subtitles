@@ -30,22 +30,33 @@ export class GeminiLiveClient {
       ws.binaryType = "arraybuffer";
       this.ws = ws;
 
-      const onOpenError = () =>
-        reject(classify("Gemini Live API へ接続できませんでした"));
-      ws.addEventListener("error", onOpenError, { once: true });
+      let opened = false;
 
       ws.addEventListener(
         "open",
         () => {
-          ws.removeEventListener("error", onOpenError);
+          opened = true;
           resolve();
         },
         { once: true },
       );
 
+      // error イベントには理由が載らない。必ず続く close の code/reason を使う。
       ws.addEventListener("message", (e) => void this.handle(e.data));
 
       ws.addEventListener("close", (e) => {
+        if (this.logEvents) {
+          console.debug(`[gemini] close code=${e.code} reason=${e.reason || "(なし)"}`);
+        }
+        if (!opened) {
+          reject(
+            classify(
+              e.reason || `接続が確立できませんでした (close ${e.code})`,
+              e.code,
+            ),
+          );
+          return;
+        }
         if (this.closedByUs) return;
         this.onCloseCb(e.code === 1000 ? undefined : classify(e.reason, e.code));
       });

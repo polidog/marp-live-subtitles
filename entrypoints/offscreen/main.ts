@@ -32,12 +32,16 @@ const APP_STATE: Record<TranslationStatus, AppState> = {
   RECONNECTING: "RECONNECTING",
 };
 
-function reportError(error: TranslationError) {
+/**
+ * terminal = true は「もう再試行しない」。Start 中の失敗は teardown へ進むので、
+ * recoverable かどうかに関わらず RECONNECTING と出してはいけない。
+ */
+function reportError(error: TranslationError, terminal = false) {
   send("background", { type: "TRANSLATION_ERROR", error });
   send("background", {
     type: "STATUS",
-    state: error.recoverable ? "RECONNECTING" : "ERROR",
-    error: error.message,
+    state: !terminal && error.recoverable ? "RECONNECTING" : "ERROR",
+    error: `${error.code}: ${error.message}`,
   });
 }
 
@@ -159,7 +163,7 @@ async function start(config: { settings: Settings; apiKey: string }): Promise<vo
       ? e
       : translationError("UNKNOWN", String((e as Error)?.message ?? e));
     traceFail("Start 失敗", `${error.code}: ${error.message}`);
-    reportError(error);
+    reportError(error, true);
     running = false;
     await teardown();
   }

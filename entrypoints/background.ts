@@ -27,9 +27,12 @@ export default defineBackground(() => {
     void chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
   };
 
+  // エラー文言は「次に Start / Stop を押すまで」残す。
+  // 失敗直後に offscreen が送ってくる IDLE で消えてしまい、
+  // 「押してもすぐ終了する（理由は出ない）」状態になっていた。
   const setState = (next: AppState, err?: string) => {
     state = next;
-    error = err;
+    if (err !== undefined) error = err;
     if (!RUNNING.includes(next)) latencyMs = undefined;
     badge(next);
     send("ui", { type: "STATUS", state, error, latencyMs });
@@ -57,6 +60,7 @@ export default defineBackground(() => {
       return;
     }
     targetTabId = tab.id;
+    error = undefined;
     resetTrace();
     trace("Start", `tab ${tab.id}: ${tab.url?.slice(0, 80)}`);
 
@@ -78,6 +82,7 @@ export default defineBackground(() => {
   }
 
   async function stop(): Promise<void> {
+    error = undefined;
     setState("STOPPING");
     send("offscreen", { type: "STOP" });
     if (targetTabId != null) sendToTab(targetTabId, { type: "CLEAR" });
@@ -139,9 +144,9 @@ export default defineBackground(() => {
         // 停止処理中に offscreen の遅れた状態で復活させない
         if (state === "STOPPING" && msg.state !== "IDLE") break;
         state = msg.state;
-        error = msg.error;
+        if (msg.error !== undefined) error = msg.error;
         badge(msg.state);
-        send("ui", msg);
+        send("ui", { type: "STATUS", state, error, latencyMs });
         break;
 
       case "TRANSLATION_ERROR":

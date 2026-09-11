@@ -54,7 +54,8 @@ export default function App() {
       switch (msg.type) {
         case "STATUS":
           setState(msg.state);
-          setError(msg.error);
+          // undefined で既存のエラー文言を消さない（Start / Stop で消す）
+          if (msg.error !== undefined) setError(msg.error);
           if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
           break;
         case "SUBTITLE":
@@ -168,7 +169,10 @@ export default function App() {
 
       <button
         style={{ ...s.button, background: running ? "#dc2626" : "#111827" }}
-        onClick={() => send("background", { type: running ? "STOP" : "START" })}
+        onClick={() => {
+          setError(undefined);
+          send("background", { type: running ? "STOP" : "START" });
+        }}
       >
         {running ? "Stop" : "Start Subtitles"}
       </button>
