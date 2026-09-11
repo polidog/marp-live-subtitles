@@ -7,16 +7,17 @@ import {
 } from "../../lib/audio/capture";
 import { LANGUAGES, languageName } from "../../lib/translation/types";
 import {
-  apiKeyItem,
   DEFAULT_SETTINGS,
+  getApiKey,
   getSettings,
   patchSettings,
+  setApiKey,
 } from "../../stores/settings";
 import type { Settings } from "../../types";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKeyInput] = useState("");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [permission, setPermission] = useState<string>("unknown");
   const [saved, setSaved] = useState(false);
@@ -24,7 +25,7 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       setSettings(await getSettings());
-      setApiKey(await apiKeyItem.getValue());
+      setApiKeyInput(await getApiKey());
       setPermission(await micPermissionState());
       setMics(await listMicrophones().catch(() => []));
     })();
@@ -200,9 +201,9 @@ export default function App() {
             type="password"
             value={apiKey}
             placeholder="AIza..."
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => setApiKeyInput(e.target.value)}
             onBlur={async () => {
-              await apiKeyItem.setValue(apiKey.trim());
+              await setApiKey(apiKey.trim());
               flash();
             }}
           />

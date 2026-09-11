@@ -12,7 +12,7 @@ import {
   type TranslationError,
   type TranslationStatus,
 } from "../../lib/translation/types";
-import { apiKeyItem, getSettings } from "../../stores/settings";
+import { getApiKey, getSettings } from "../../stores/settings";
 import type { AppState, PresentationContext, Settings } from "../../types";
 
 let running = false;
@@ -43,7 +43,7 @@ function reportError(error: TranslationError) {
 
 async function buildPipeline(): Promise<void> {
   settings = await getSettings();
-  const apiKey = await apiKeyItem.getValue();
+  const apiKey = await getApiKey();
   if (!apiKey) {
     throw translationError(
       "AUTH_FAILED",
