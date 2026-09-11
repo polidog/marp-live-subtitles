@@ -4,6 +4,7 @@ import {
   AUDIO_FORMAT_LABEL,
   hasMicPermission,
   listMicrophones,
+  openMicSiteSettings,
 } from "../../lib/audio/capture";
 import { onMessage, send } from "../../lib/messaging/messages";
 import { languageName } from "../../lib/translation/types";
@@ -136,6 +137,9 @@ export default function App() {
           <button style={s.link} onClick={() => chrome.runtime.openOptionsPage()}>
             Options で許可
           </button>
+          <button style={s.link} onClick={openMicSiteSettings}>
+            Chrome のサイト設定でマイクを「許可」にする
+          </button>
         </div>
       )}
 
@@ -206,7 +210,16 @@ export default function App() {
         </div>
       )}
 
-      {error && <div style={s.error}>{error}</div>}
+      {error && (
+        <div style={s.error}>
+          {error}
+          {error.startsWith("MIC_PERMISSION_DENIED") && (
+            <button style={s.link} onClick={openMicSiteSettings}>
+              Chrome のサイト設定でマイクを「許可」にする
+            </button>
+          )}
+        </div>
+      )}
 
       <button style={s.link} onClick={() => chrome.runtime.openOptionsPage()}>
         Options

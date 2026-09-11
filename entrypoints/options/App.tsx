@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   listMicrophones,
   micPermissionState,
+  openMicSiteSettings,
   requestMicPermission,
 } from "../../lib/audio/capture";
 import { LANGUAGES, languageName } from "../../lib/translation/types";
@@ -51,9 +52,16 @@ export default function App() {
     // getUserMedia が通っただけでは永続化されたとは限らないので、状態を読み直す
     const state = await micPermissionState();
     setPermission(state);
-    if (ok) {
+    if (ok && state === "granted") {
       setMics(await listMicrophones().catch(() => []));
       setGrantError(undefined);
+    } else if (ok) {
+      // getUserMedia は通ったのに永続化されていない = 「今回のみ許可」を選んだ
+      setGrantError(
+        `許可されましたが永続化されていません (permission: ${state})。` +
+          `このままだと字幕開始時に offscreen document から使えません。` +
+          `プロンプトで「常に許可」を選ぶか、下の「Chrome のサイト設定を開く」でマイクを「許可」にしてください。`,
+      );
     } else {
       // 一度拒否すると Chrome は再プロンプトしない。行き止まりにしない。
       setGrantError(
@@ -152,9 +160,20 @@ export default function App() {
               マイクを許可する
             </button>
           )}
+          <button
+            style={{ ...s.button, marginLeft: 8 }}
+            onClick={openMicSiteSettings}
+            title="chrome://settings/content/siteDetails でこの拡張のマイクを「許可」に固定する"
+          >
+            Chrome のサイト設定を開く
+          </button>
           {/* 権限は拡張 ID ごと。dev ビルドと本ビルドでは別扱いになる */}
           <div style={s.note}>
             permission: {permission} / extension: {chrome.runtime.id}
+          </div>
+          <div style={s.note}>
+            プロンプトで「今回のみ許可」を選ぶとページを閉じた時点で失効します。
+            字幕は offscreen document から録音するため、「常に許可」が必要です。
           </div>
           {grantError && <div style={s.error}>{grantError}</div>}
         </div>

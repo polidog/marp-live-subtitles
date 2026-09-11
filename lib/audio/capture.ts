@@ -43,7 +43,8 @@ export async function startAudioCapture(
       throw translationError(
         "MIC_PERMISSION_DENIED",
         `マイクが未許可です (permission: ${permission} / ${name} / extension: ${chrome.runtime.id})。` +
-          `この拡張 ID の Options で「マイクを許可する」を実行してください。` +
+          `Options の「マイクを許可する」でプロンプトが出たら「今回のみ」ではなく「常に許可」を選ぶか、` +
+          `「Chrome のサイト設定を開く」でマイクを「許可」に固定してください。` +
           `pnpm dev と pnpm build では拡張 ID が変わるため、許可はそれぞれ必要です。`,
       );
     }
@@ -117,6 +118,21 @@ export async function micPermissionState(): Promise<PermissionState | "unknown">
 
 export async function hasMicPermission(): Promise<boolean> {
   return (await micPermissionState()) === "granted";
+}
+
+/**
+ * この拡張のマイク権限を Chrome のサイト設定で開く。
+ * プロンプトで「今回のみ許可」を選ぶとページを閉じた時点で失効し、offscreen から
+ * 見ると "prompt" に戻る。ここで「許可」に固定するのが確実。
+ */
+export function micSiteSettingsUrl(): string {
+  return `chrome://settings/content/siteDetails?site=${encodeURIComponent(
+    `chrome-extension://${chrome.runtime.id}`,
+  )}`;
+}
+
+export function openMicSiteSettings(): void {
+  void chrome.tabs.create({ url: micSiteSettingsUrl() });
 }
 
 /** options ページ（タブ context）から一度だけ呼ぶ。offscreen ではプロンプトを出せない。 */
