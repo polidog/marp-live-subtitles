@@ -1,4 +1,4 @@
-# Marp Live Subtitles
+# Live Subtitles
 
 Marp で作った HTML プレゼンテーションの上に、発表者の音声をリアルタイム翻訳して字幕表示する Chrome Extension。
 

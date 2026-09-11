@@ -113,7 +113,7 @@ export default function App() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Marp Live Subtitles</h1>
+        <h1>Live Subtitles</h1>
         <div className="note">変更は自動で保存されます</div>
       </div>
       {saved && <div className="toast">保存しました</div>}

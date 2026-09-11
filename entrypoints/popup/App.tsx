@@ -129,7 +129,7 @@ export default function App() {
   return (
     <div className="pop">
       <div className="pop-head">
-        <span className="title">Marp Live Subtitles</span>
+        <span className="title">Live Subtitles</span>
         <span className="pill">
           <span className={`dot ${DOT[state]}`} />
           {running && state !== "CONNECTING" ? "LIVE" : STATE_LABEL[state]}
