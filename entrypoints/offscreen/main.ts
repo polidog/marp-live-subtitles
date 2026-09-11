@@ -63,6 +63,7 @@ function toTranslationError(e: unknown): TranslationError {
 async function buildPipeline(config: {
   settings: Settings;
   apiKey: string;
+  context?: PresentationContext;
 }): Promise<void> {
   settings = config.settings;
   const apiKey = config.apiKey;
@@ -141,6 +142,10 @@ async function buildPipeline(config: {
     void fail(error);
   });
 
+  // spec2 §29 — setup に載せるので connect より先に渡す
+  if (config.context) context = config.context;
+  if (context) await provider.updateContext?.(context);
+
   await provider.connect({
     sourceLanguage: settings.sourceLang,
     targetLanguage: settings.targetLang,
@@ -151,10 +156,9 @@ async function buildPipeline(config: {
     logEvents: settings.logProviderEvents,
   });
 
-  if (context) await provider.updateContext?.(context);
-
   // spec2 §15 — setup 完了前のチャンクは Provider 側でバッファされる。
   // マイク由来の失敗だけを MIC_* として扱う（他の失敗まで「マイク未許可」と言わない）。
+  if (provider.ownsMicrophone) return;
   try {
     capture = await startAudioCapture(settings.micDeviceId, (pcm) =>
       provider?.pushAudio(pcm),
@@ -173,7 +177,11 @@ async function teardown(): Promise<void> {
   committer = null;
 }
 
-async function start(config: { settings: Settings; apiKey: string }): Promise<void> {
+async function start(config: {
+  settings: Settings;
+  apiKey: string;
+  context?: PresentationContext;
+}): Promise<void> {
   if (running) return;
   running = true;
   resetTrace();
@@ -199,7 +207,7 @@ async function stop(): Promise<void> {
 onMessage("offscreen", (msg) => {
   switch (msg.type) {
     case "OFFSCREEN_START":
-      void start({ settings: msg.settings, apiKey: msg.apiKey });
+      void start({ settings: msg.settings, apiKey: msg.apiKey, context: msg.context });
       break;
     case "STOP":
       void stop();

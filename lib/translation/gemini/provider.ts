@@ -51,8 +51,13 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
   private sentChunks = 0;
   private droppedChunks = 0;
   private stopped = false;
-  /** translationConfig をサーバーが知らなければ systemInstruction に切り替える */
+  /**
+   * translate 専用モデルは translationConfig、通常の Live モデルは systemInstruction。
+   * 前者でもサーバーに弾かれたら後者へ切り替える。
+   */
   private strategy: SetupStrategy = "translationConfig";
+  /** TEXT 出力（速い）で受ける。モデルが対応していなければ AUDIO へ落とす。 */
+  private textOnly = false;
 
   private onInput: (e: TranscriptEvent) => void = () => {};
   private onOutput: (e: TranscriptEvent) => void = () => {};
@@ -66,12 +71,22 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
   async connect(config: TranslationConfig): Promise<void> {
     this.config = config;
     this.stopped = false;
+    // 翻訳専用モデルにしか translationConfig は無い。通常の Live モデルでは
+    // 最初から systemInstruction 戦略（＝資料を渡せる / TEXT 出力で速い）で行く。
+    this.strategy = /translate/i.test(config.model)
+      ? "translationConfig"
+      : "systemInstruction";
+    this.textOnly = this.strategy === "systemInstruction";
     await this.open();
   }
 
   private async open(): Promise<void> {
     const config = this.config!;
     this.ready = false;
+    // 張り直しで前回の setup タイマーが残ると、本当の理由（close reason）を
+    // 「モデル名を確認しろ」で上書きしてしまう
+    if (this.setupTimer) clearTimeout(this.setupTimer);
+    this.setupTimer = null;
     this.onStatusCb("CONNECTING");
 
     const client = new GeminiLiveClient(endpointUrl(this.apiKey), config.logEvents);
@@ -83,6 +98,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
       // error メッセージ経由ですでに張り直しを予約していれば、その後の close は無視する
       if (this.reconnectTimer) return;
       if (error && this.fallbackIfUnknownField(error.message)) return;
+      if (error && this.degradeToAudio()) return;
       if (error) {
         this.onErrorCb(error);
         // 鍵の失効やモデル不在は張り直しても直らない。回さない。
@@ -99,10 +115,11 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
     this.onStatusCb("CONFIGURING");
     this.setupSentAt = Date.now();
-    client.send(buildSetup(config, this.strategy));
+    client.send(buildSetup(config, this.strategy, this.context, this.textOnly));
     trace(
       "setup 送信 ok",
-      `model: ${config.model}, target: ${config.targetLanguage}, strategy: ${this.strategy}`,
+      `model: ${config.model}, target: ${config.targetLanguage}, ` +
+        `strategy: ${this.strategy}, output: ${this.textOnly ? "TEXT" : "AUDIO"}`,
     );
 
     // setupComplete が来ないと ready にならず音声を捨て続ける。
@@ -114,7 +131,8 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
         translationError(
           "SESSION_FAILED",
           `Gemini から setup 応答がありません (${SETUP_TIMEOUT_MS / 1000} 秒待機, model: ${config.model})。` +
-            `モデル名が正しいか確認してください。`,
+            `この鍵で使えないモデル名だとサーバーは黙ったままになります。` +
+            `Options の「この API Key で使える Live モデルを取得」で一覧を引いて選び直してください。`,
         ),
       );
     }, SETUP_TIMEOUT_MS);
@@ -175,6 +193,7 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
 
       case "error": {
         if (this.fallbackIfUnknownField(event.message)) break;
+        if (this.degradeToAudio()) break;
         const error = classify(event.message);
         this.onErrorCb(error);
         if (!error.recoverable) void this.stop();
@@ -246,8 +265,9 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
   }
 
   /**
-   * spec2 §27-§29 — 翻訳専用モデルは context injection を前提にできない。
-   * ここでは保持のみ行い、Provider を差し替えたときに使えるようにしておく。
+   * spec2 §27-§29 — 翻訳専用モデル（translationConfig 戦略）は context injection を
+   * 前提にできないので保持だけする。systemInstruction 戦略では次の setup に載る。
+   * 走行中のセッションは張り直さない（発話が切れるほうが害が大きい）。
    */
   async updateContext(context: PresentationContext): Promise<void> {
     this.context = context;
@@ -268,6 +288,21 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
       "setup フォールバック",
       `サーバーが translationConfig を知らないため systemInstruction で翻訳を指示して張り直す`,
     );
+    if (this.setupTimer) clearTimeout(this.setupTimer);
+    this.setupTimer = null;
+    this.attempt = 0;
+    this.scheduleReconnect();
+    return true;
+  }
+
+  /**
+   * TEXT 出力を受け付けないモデル（native audio 系）は setup 直後に蹴ってくる。
+   * 字幕が出ないまま黙るより、AUDIO + outputAudioTranscription に落として繋ぎ直す。
+   */
+  private degradeToAudio(): boolean {
+    if (this.ready || !this.textOnly) return false;
+    this.textOnly = false;
+    trace("setup フォールバック", "TEXT 出力が通らないので AUDIO で張り直す");
     if (this.setupTimer) clearTimeout(this.setupTimer);
     this.setupTimer = null;
     this.attempt = 0;

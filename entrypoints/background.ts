@@ -1,15 +1,16 @@
 /** spec §16, §31 / spec2 §19, §34 — lifecycle / routing / state coordination */
 import { defineBackground } from "wxt/utils/define-background";
 import {
+  askTab,
   onMessage,
   send,
   sendToTab,
   type ExtensionMessage,
 } from "../lib/messaging/messages";
 import { getApiKey, getSettings } from "../stores/settings";
-import { resetTrace, trace, traceFail, traceOnce } from "../lib/trace";
+import { resetTrace, setTraceSink, trace, traceFail, traceOnce } from "../lib/trace";
 import type { TranslationErrorCode } from "../lib/translation/types";
-import type { AppState, MarpDetection } from "../types";
+import type { AppState, MarpDetection, PresentationContext } from "../types";
 
 const OFFSCREEN_URL = "offscreen.html";
 
@@ -23,6 +24,21 @@ export default defineBackground(() => {
   let targetTabId: number | null = null;
   let detection: MarpDetection = { detected: false, slideCount: 0 };
   let creating: Promise<void> | null = null;
+
+  // Service Worker のコンソールは見つけにくい。Start 中は対象タブ（Marp ページ）の
+  // F12 コンソールにも同じ行を流して、1 か所で追えるようにする。
+  const forwardTrace = (context: string, line: string) => {
+    if (targetTabId != null) sendToTab(targetTabId, { type: "TRACE", context, line });
+    // dev 専用: 手元の log sink にも流す（`node scripts/trace-sink.mjs` を立てたとき）
+    if (import.meta.env.DEV) {
+      void fetch("http://localhost:7777/", {
+        method: "POST",
+        mode: "no-cors",
+        body: `${context}: ${line}`,
+      }).catch(() => {});
+    }
+  };
+  setTraceSink(forwardTrace);
 
   const badge = (next: AppState) => {
     void chrome.action.setBadgeText({ text: RUNNING.includes(next) ? "LIVE" : "" });
@@ -72,7 +88,22 @@ export default defineBackground(() => {
       trace("設定を読み込み ok", `apiKey: ${apiKey.length}文字`);
       await ensureOffscreen();
       trace("offscreen document 用意 ok");
-      send("offscreen", { type: "OFFSCREEN_START", settings, apiKey });
+      // スライドは setup の systemInstruction に載せるので、接続前に取り切る (spec2 §29)
+      const context = await askTab<PresentationContext | null>(targetTabId, {
+        type: "GET_CONTEXT",
+      });
+      trace(
+        "発表コンテキスト取得",
+        context
+          ? `${context.outline?.length ?? 0} 見出し / ${context.keywords.length} 用語`
+          : "なし",
+      );
+      send("offscreen", {
+        type: "OFFSCREEN_START",
+        settings,
+        apiKey,
+        context: context ?? undefined,
+      });
       // 現在のスライドを Local Context State として取り込む (spec2 §28)
       sendToTab(targetTabId, { type: "DETECT" });
     } catch (e) {
@@ -165,6 +196,8 @@ export default defineBackground(() => {
       // 各 context の進捗をここに集約する
       case "TRACE":
         console.info(`[MLS] ${msg.context}: ${msg.line}`);
+        // content 自身の行を送り返しても二重に出るだけ
+        if (msg.context !== "content") forwardTrace(msg.context, msg.line);
         break;
     }
   });

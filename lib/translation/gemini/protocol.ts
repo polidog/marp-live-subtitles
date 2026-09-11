@@ -1,4 +1,5 @@
 /** spec2 §6, §15, §16 — Gemini Live API BidiGenerateContent のメッセージ組み立てと解釈 */
+import type { PresentationContext } from "../../../types";
 import type { TranslationConfig } from "../types";
 import {
   GEMINI_SAMPLE_RATE,
@@ -10,6 +11,9 @@ import {
 export function buildSetup(
   config: TranslationConfig,
   strategy: SetupStrategy = "translationConfig",
+  context: PresentationContext | null = null,
+  /** TEXT で受けると TTS を待たないぶん字幕が早い。モデルが対応しなければ false で AUDIO。 */
+  textOnly = strategy === "systemInstruction",
 ): unknown {
   return {
     setup: {
@@ -17,11 +21,13 @@ export function buildSetup(
         ? config.model
         : `models/${config.model}`,
 
-      // spec2 §6 — AUDIO のままで outputAudioTranscription から翻訳文を取る
-      generationConfig: { responseModalities: ["AUDIO"] },
+      // spec2 §6 — AUDIO のときは outputAudioTranscription から翻訳文を取る
+      generationConfig: { responseModalities: [textOnly ? "TEXT" : "AUDIO"] },
 
       ...(config.inputTranscription ? { inputAudioTranscription: {} } : {}),
-      ...(config.outputTranscription ? { outputAudioTranscription: {} } : {}),
+      ...(config.outputTranscription && !textOnly
+        ? { outputAudioTranscription: {} }
+        : {}),
 
       ...(strategy === "translationConfig"
         ? {
@@ -33,9 +39,9 @@ export function buildSetup(
             },
           }
         : {
-            // spec2 §29 の代替戦略。通常の Live モデルに翻訳役を指示する。
+            // spec2 §29 の代替戦略。通常の Live モデルに翻訳役と資料を渡す。
             systemInstruction: {
-              parts: [{ text: translationInstruction(config) }],
+              parts: [{ text: translationInstruction(config, context) }],
             },
           }),
       // sourceLanguage は Gemini 側で自動判定されるため送らない。

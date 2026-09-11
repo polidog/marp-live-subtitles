@@ -124,6 +124,9 @@ export default function App() {
           }
         >
           <option value="gemini-live-translation">Gemini Live Translation</option>
+          <option value="webspeech-gemini-text">
+            Web Speech (Chrome 内蔵) + Gemini テキスト翻訳（安い）
+          </option>
         </select>
       </Field>
       <Field label="Model">
@@ -280,6 +283,16 @@ export default function App() {
           max={5}
           value={settings.maxLines}
           onChange={(e) => update({ maxLines: Number(e.target.value) })}
+        />
+      </Field>
+      <Field label={`Clear After (${(settings.holdMs / 1000).toFixed(1)}s)`}>
+        <input
+          type="range"
+          min={500}
+          max={6000}
+          step={250}
+          value={settings.holdMs}
+          onChange={(e) => update({ holdMs: Number(e.target.value) })}
         />
       </Field>
       <Field label="Original Text">

@@ -69,6 +69,11 @@ export function extractContext(el: HTMLElement, index: number): SlideContext {
   };
 }
 
+/** デッキ全体のスライドを抽出する。発表前に資料ごと渡すための素材 (spec2 §29) */
+export function getDeckContexts(): SlideContext[] {
+  return findSlideElements().map((el, i) => extractContext(el, i));
+}
+
 export function getSlideContext(): SlideContext | null {
   const active = getActiveSlide();
   return active ? extractContext(active.el, active.index) : null;

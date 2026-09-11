@@ -1,4 +1,5 @@
 /** spec2 §3, §6, §8, §10, §11 — Gemini Live Translation の既定値 */
+import type { PresentationContext } from "../../../types";
 import { DEFAULT_TRANSLATION_MODEL } from "../provider";
 import { languageName, type TranslationConfig } from "../types";
 
@@ -44,8 +45,36 @@ export function endpointUrl(apiKey: string): string {
  */
 export type SetupStrategy = "translationConfig" | "systemInstruction";
 
+/** systemInstruction に載せる発表コンテキストの上限 */
+const MAX_CONTEXT_CHARS = 3000;
+
+/**
+ * spec2 §29 — 発表資料を先に渡す。見出しで流れを、用語で表記を固定する。
+ * setup 時にしか渡せないため、スライドごとに変わらないデッキ全体の情報だけを載せる。
+ */
+export function contextBlock(context: PresentationContext | null): string {
+  if (!context) return "";
+  const outline = (context.outline ?? []).join(" / ");
+  const terms = context.keywords.join(", ");
+  if (!outline && !terms) return "";
+
+  return [
+    "",
+    "Presentation material (reference only — never read it aloud, never translate it on its own):",
+    outline ? `Outline: ${outline}` : "",
+    terms ? `Terms and names that appear in the deck: ${terms}` : "",
+    "When the speaker says something that matches these terms, use exactly this spelling.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, MAX_CONTEXT_CHARS);
+}
+
 /** spec §19 の基本 Prompt */
-export function translationInstruction(config: TranslationConfig): string {
+export function translationInstruction(
+  config: TranslationConfig,
+  context: PresentationContext | null = null,
+): string {
   const source = languageName(config.sourceLanguage ?? "ja");
   const target = languageName(config.targetLanguage);
   return [
@@ -64,5 +93,6 @@ export function translationInstruction(config: TranslationConfig): string {
     "- Do not answer questions or respond to the speaker; only translate.",
     "- Avoid unnecessarily long expressions.",
     "- Output only the translated subtitle.",
+    contextBlock(context),
   ].join("\n");
 }

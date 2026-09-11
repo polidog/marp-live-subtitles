@@ -33,11 +33,14 @@ export type SlideContext = {
 /** spec2 §27-§29 — Provider とは疎結合に保つ発表コンテキスト */
 export type PresentationContext = {
   slide?: SlideContext;
+  /** デッキ全体から拾った固有名詞・技術用語 */
   keywords: string[];
+  /** 全スライドの見出し。発表の流れを先に渡すための粗い要約 */
+  outline?: string[];
 };
 
 /** spec2 §30 */
-export type TranslationProviderId = "gemini-live-translation";
+export type TranslationProviderId = "gemini-live-translation" | "webspeech-gemini-text";
 
 /** spec §27 / spec2 §31-§33 */
 export type Settings = {
@@ -51,6 +54,8 @@ export type Settings = {
   width: number;
   maxLines: number;
   mode: SubtitleMode;
+  /** 更新が途切れてから字幕を消すまでの間 (spec2 §24) */
+  holdMs: number;
 
   provider: TranslationProviderId;
   model: string;

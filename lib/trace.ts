@@ -21,6 +21,12 @@ function contextName(): string {
 const CONTEXT = contextName();
 const seen = new Set<string>();
 
+/** background だけが使う。集めた行を Marp ページの F12 コンソールへも流す。 */
+let sink: ((context: string, line: string) => void) | null = null;
+export function setTraceSink(cb: typeof sink): void {
+  sink = cb;
+}
+
 function line(step: string, detail?: string): string {
   return detail ? `${step} — ${detail}` : step;
 }
@@ -31,6 +37,8 @@ export function trace(step: string, detail?: string): void {
   // background は自分の送信を受け取らないので二重には出ない
   if (CONTEXT !== "background") {
     send("background", { type: "TRACE", context: CONTEXT, line: text });
+  } else {
+    sink?.(CONTEXT, text);
   }
 }
 

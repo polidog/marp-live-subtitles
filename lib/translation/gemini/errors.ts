@@ -24,6 +24,10 @@ export function classify(message: string, closeCode?: number): TranslationError 
   if (/expired|EXPIRED/i.test(m)) {
     return translationError("TOKEN_EXPIRED", `トークンの期限が切れました: ${m}`, true);
   }
+  // 課金上限は張り直しても直らない。回さずにそのまま見せる。
+  if (/spending cap|billing|exceeded its monthly/i.test(m)) {
+    return translationError("RATE_LIMITED", `Gemini の利用上限に達しています: ${m}`);
+  }
   if (/RESOURCE_EXHAUSTED|429|quota|rate limit/i.test(m)) {
     return translationError("RATE_LIMITED", `レート制限に達しました: ${m}`, true);
   }

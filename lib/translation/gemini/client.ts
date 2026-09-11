@@ -2,6 +2,10 @@
 import { classify, translationError } from "./errors";
 import { parseServerMessage, type GeminiServerEvent } from "./protocol";
 import type { TranslationError } from "../types";
+import { trace } from "../../trace";
+
+/** dev では生の送受信も trace に載せる（log sink で追えるように） */
+const TRACE_RAW = import.meta.env.DEV;
 
 export class GeminiLiveClient {
   private ws: WebSocket | null = null;
@@ -45,6 +49,7 @@ export class GeminiLiveClient {
       ws.addEventListener("message", (e) => void this.handle(e.data));
 
       ws.addEventListener("close", (e) => {
+        if (TRACE_RAW) trace("ws close", `code=${e.code} reason=${e.reason || "(なし)"}`);
         if (this.logEvents) {
           console.debug(`[gemini] close code=${e.code} reason=${e.reason || "(なし)"}`);
         }
@@ -84,6 +89,7 @@ export class GeminiLiveClient {
     }
 
     const events = parseServerMessage(json);
+    if (TRACE_RAW) trace("recv", text.slice(0, 300));
     if (this.logEvents) {
       // 解釈できなかったメッセージを黙って捨てない。フィールド名が変わると
       // 「エラーも字幕も出ない」状態になり、ここを見ないと気づけない。
@@ -101,8 +107,9 @@ export class GeminiLiveClient {
       return;
     }
     // 音声チャンクは毎秒 10 件流れるのでログから除く
-    if (this.logEvents && !(payload as any)?.realtimeInput) {
-      console.debug("[gemini] 送信:", payload);
+    if (!(payload as any)?.realtimeInput) {
+      if (TRACE_RAW) trace("send", JSON.stringify(payload).slice(0, 400));
+      if (this.logEvents) console.debug("[gemini] 送信:", payload);
     }
     this.ws.send(JSON.stringify(payload));
   }

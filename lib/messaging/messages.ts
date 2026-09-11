@@ -23,10 +23,18 @@ export type ExtensionMessage =
   | { type: "STOP" }
   // background -> offscreen。offscreen document は chrome.runtime 以外の拡張 API を
   // 使えない（chrome.storage が無い）ため、設定は background が読んで渡す。
-  | { type: "OFFSCREEN_START"; settings: Settings; apiKey: string }
+  | {
+      type: "OFFSCREEN_START";
+      settings: Settings;
+      apiKey: string;
+      /** setup の systemInstruction に載せる発表コンテキスト (spec2 §29) */
+      context?: PresentationContext;
+    }
   | { type: "GET_STATUS" }
   // background -> content (Marp 検出問い合わせ)
   | { type: "DETECT" }
+  // background -> content (Start 時に発表コンテキストを同期的に取る)
+  | { type: "GET_CONTEXT" }
   // content -> background -> offscreen (spec2 §28)
   | { type: "PRESENTATION_CONTEXT"; context: PresentationContext }
   // content -> background
@@ -81,6 +89,25 @@ export function sendToTab(tabId: number, msg: ExtensionMessage): void {
         (e as Error)?.message ?? e,
       ),
     );
+}
+
+/**
+ * content script に問い合わせて応答を待つ。届かなければ undefined。
+ * 応答が返らないケース（孤児 content script など）で呼び出し側を止めないよう、
+ * 必ず timeout で打ち切る。
+ */
+export async function askTab<T>(
+  tabId: number,
+  msg: ExtensionMessage,
+  timeoutMs = 500,
+): Promise<T | undefined> {
+  const answer = chrome.tabs
+    .sendMessage(tabId, { ...msg, target: "content" } as Envelope)
+    .catch(() => undefined) as Promise<T | undefined>;
+  const timeout = new Promise<undefined>((resolve) =>
+    setTimeout(resolve, timeoutMs, undefined),
+  );
+  return Promise.race([answer, timeout]);
 }
 
 /** 自分宛の Envelope だけ受け取るリスナーを登録し、解除関数を返す。 */

@@ -6,16 +6,17 @@ import { defineContentScript } from "wxt/utils/define-content-script";
 import { FADE_MS, Subtitle } from "../components/Subtitle";
 import { toPresentationContext } from "../lib/marp/context";
 import { detectMarp } from "../lib/marp/detector";
-import { getSlideContext, watchSlideChange } from "../lib/marp/slide";
+import { getDeckContexts, getSlideContext, watchSlideChange } from "../lib/marp/slide";
 import { onMessage, send } from "../lib/messaging/messages";
 import { trace, traceOnce } from "../lib/trace";
 import { DEFAULT_SETTINGS, getSettings, watchSettings } from "../stores/settings";
 import type { Settings, SubtitleStatus } from "../types";
 
-/** spec2 §24 — 最後の字幕を保持する時間。話し続けている間は消さない */
-const HOLD_MS = 4000;
-/** partial のまま更新が途切れた場合の保険 */
-const IDLE_HIDE_MS = 8000;
+/**
+ * spec2 §24 — 最後の字幕を保持する時間は settings.holdMs（既定 1.0 秒）。
+ * partial のまま更新が途切れた場合はその倍まで待つ。
+ */
+const IDLE_FACTOR = 1.5;
 /**
  * 画面に残す確定文の数。ロールアップ表示では maxLines で切られるので、
  * ここは「切られる前の在庫」。多すぎても無駄なので少しだけ持つ。
@@ -34,6 +35,11 @@ function SubtitleApp() {
   const [fading, setFading] = useState(false);
 
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // onMessage の購読は初回だけ張るので、設定は ref 経由で読む
+  const holdMs = useRef(DEFAULT_SETTINGS.holdMs);
+  useEffect(() => {
+    holdMs.current = settings.holdMs;
+  }, [settings.holdMs]);
 
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
@@ -71,7 +77,8 @@ function SubtitleApp() {
         setVisible(true);
 
         // 更新が途切れたら HOLD -> FADE OUT (spec2 §24)
-        const hold = msg.status === "final" ? HOLD_MS : IDLE_HIDE_MS;
+        const hold =
+          msg.status === "final" ? holdMs.current : holdMs.current * IDLE_FACTOR;
         timers.current.push(
           setTimeout(() => {
             setFading(true);
@@ -121,18 +128,31 @@ export default defineContentScript({
     const detection = detectMarp();
     send("background", { type: "MARP_DETECTION", detection });
 
-    const pushContext = () => {
+    // デッキ全体は変わらないので一度だけ抽出する (spec2 §29)
+    const deck = detection.detected ? getDeckContexts() : [];
+
+    const currentContext = () => {
       const slide = getSlideContext();
-      if (slide) {
-        send("background", {
-          type: "PRESENTATION_CONTEXT",
-          context: toPresentationContext(slide),
-        });
-      }
+      return slide ? toPresentationContext(slide, deck) : null;
+    };
+
+    const pushContext = () => {
+      const context = currentContext();
+      if (context) send("background", { type: "PRESENTATION_CONTEXT", context });
     };
 
     // popup / background からの問い合わせに応答する
     onMessage("content", (msg, _sender, sendResponse) => {
+      // background / offscreen の進捗をこのページの F12 コンソールにも並べる
+      if (msg.type === "TRACE") {
+        console.info(`[MLS] ${msg.context}: ${msg.line}`);
+        return;
+      }
+      // Start 時に background が同期的に取りに来る。setup へ載せるので取りこぼせない。
+      if (msg.type === "GET_CONTEXT") {
+        sendResponse(currentContext());
+        return true;
+      }
       if (msg.type !== "DETECT") return;
       const fresh = detectMarp();
       sendResponse(fresh);
@@ -146,7 +166,7 @@ export default defineContentScript({
       const unwatch = watchSlideChange((slide) =>
         send("background", {
           type: "PRESENTATION_CONTEXT",
-          context: toPresentationContext(slide),
+          context: toPresentationContext(slide, deck),
         }),
       );
       ctx.onInvalidated(unwatch);
