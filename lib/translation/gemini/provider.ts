@@ -1,11 +1,12 @@
 /** spec2 §4, §11, §17-§18, §36, §39, §40 — Gemini Live Translation Provider */
 import type { PresentationContext } from "../../../types";
 import type { TranslationProvider } from "../provider";
-import type {
-  TranscriptEvent,
-  TranslationConfig,
-  TranslationError,
-  TranslationStatus,
+import {
+  isTranslationError,
+  type TranscriptEvent,
+  type TranslationConfig,
+  type TranslationError,
+  type TranslationStatus,
 } from "../types";
 import { pcm16ToBase64 } from "./audio";
 import { GeminiLiveClient } from "./client";
@@ -82,7 +83,14 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
       // error メッセージ経由ですでに張り直しを予約していれば、その後の close は無視する
       if (this.reconnectTimer) return;
       if (error && this.fallbackIfUnknownField(error.message)) return;
-      if (error) this.onErrorCb(error);
+      if (error) {
+        this.onErrorCb(error);
+        // 鍵の失効やモデル不在は張り直しても直らない。回さない。
+        if (!error.recoverable) {
+          void this.stop();
+          return;
+        }
+      }
       this.scheduleReconnect();
     });
 
@@ -283,7 +291,16 @@ export class GeminiLiveTranslationProvider implements TranslationProvider {
       try {
         await this.open();
       } catch (e) {
-        this.onErrorCb(classify(String((e as Error)?.message ?? e)));
+        if (this.stopped) return; // Stop による中断。エラーではない
+        // connect() は close code を含めて分類済みの TranslationError を投げる。再分類しない。
+        const error = isTranslationError(e)
+          ? e
+          : classify(String((e as Error)?.message ?? e));
+        this.onErrorCb(error);
+        if (!error.recoverable) {
+          void this.stop();
+          return;
+        }
         this.scheduleReconnect();
       }
     }, Math.min(delay, RECONNECT_MAX_MS));

@@ -8,6 +8,7 @@ import {
 } from "../lib/messaging/messages";
 import { getApiKey, getSettings } from "../stores/settings";
 import { resetTrace, trace, traceFail, traceOnce } from "../lib/trace";
+import type { TranslationErrorCode } from "../lib/translation/types";
 import type { AppState, MarpDetection } from "../types";
 
 const OFFSCREEN_URL = "offscreen.html";
@@ -17,6 +18,7 @@ const RUNNING: AppState[] = ["CONNECTING", "LISTENING", "TRANSLATING", "RECONNEC
 export default defineBackground(() => {
   let state: AppState = "IDLE";
   let error: string | undefined;
+  let errorCode: TranslationErrorCode | undefined;
   let latencyMs: number | undefined;
   let targetTabId: number | null = null;
   let detection: MarpDetection = { detected: false, slideCount: 0 };
@@ -27,15 +29,15 @@ export default defineBackground(() => {
     void chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
   };
 
-  // エラー文言は「次に Start / Stop を押すまで」残す。
-  // 失敗直後に offscreen が送ってくる IDLE で消えてしまい、
-  // 「押してもすぐ終了する（理由は出ない）」状態になっていた。
-  const setState = (next: AppState, err?: string) => {
+  // STATUS の error は「その時点の真実」。undefined ならエラーなし。
+  // 失敗時に文言が残るかどうかは offscreen 側の送信順序（片付け → ERROR）で担保する。
+  const setState = (next: AppState, err?: string, code?: TranslationErrorCode) => {
     state = next;
-    if (err !== undefined) error = err;
+    error = err;
+    errorCode = code;
     if (!RUNNING.includes(next)) latencyMs = undefined;
     badge(next);
-    send("ui", { type: "STATUS", state, error, latencyMs });
+    send("ui", { type: "STATUS", state, error, code: errorCode, latencyMs });
   };
 
   async function ensureOffscreen(): Promise<void> {
@@ -60,7 +62,6 @@ export default defineBackground(() => {
       return;
     }
     targetTabId = tab.id;
-    error = undefined;
     resetTrace();
     trace("Start", `tab ${tab.id}: ${tab.url?.slice(0, 80)}`);
 
@@ -82,7 +83,6 @@ export default defineBackground(() => {
   }
 
   async function stop(): Promise<void> {
-    error = undefined;
     setState("STOPPING");
     send("offscreen", { type: "STOP" });
     if (targetTabId != null) sendToTab(targetTabId, { type: "CLEAR" });
@@ -105,7 +105,7 @@ export default defineBackground(() => {
         break;
 
       case "GET_STATUS":
-        send("ui", { type: "STATUS", state, error, latencyMs });
+        send("ui", { type: "STATUS", state, error, code: errorCode, latencyMs });
         break;
 
       // popup が Marp 検出状態を問い合わせる
@@ -143,10 +143,7 @@ export default defineBackground(() => {
       case "STATUS":
         // 停止処理中に offscreen の遅れた状態で復活させない
         if (state === "STOPPING" && msg.state !== "IDLE") break;
-        state = msg.state;
-        if (msg.error !== undefined) error = msg.error;
-        badge(msg.state);
-        send("ui", { type: "STATUS", state, error, latencyMs });
+        setState(msg.state, msg.error, msg.code);
         break;
 
       case "TRANSLATION_ERROR":

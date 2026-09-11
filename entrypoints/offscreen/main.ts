@@ -3,7 +3,7 @@ import { startAudioCapture, type AudioCapture } from "../../lib/audio/capture";
 import { onMessage, send } from "../../lib/messaging/messages";
 import { resetTrace, trace, traceFail, traceOnce } from "../../lib/trace";
 import { TranslationCommitter } from "../../lib/translation/committer";
-import { micError, translationError } from "../../lib/translation/gemini/errors";
+import { formatError, micError, translationError } from "../../lib/translation/gemini/errors";
 import {
   createTranslationProvider,
   type TranslationProvider,
@@ -32,17 +32,32 @@ const APP_STATE: Record<TranslationStatus, AppState> = {
   RECONNECTING: "RECONNECTING",
 };
 
-/**
- * terminal = true は「もう再試行しない」。Start 中の失敗は teardown へ進むので、
- * recoverable かどうかに関わらず RECONNECTING と出してはいけない。
- */
-function reportError(error: TranslationError, terminal = false) {
+function statusWithError(state: AppState, error: TranslationError) {
   send("background", { type: "TRANSLATION_ERROR", error });
   send("background", {
     type: "STATUS",
-    state: !terminal && error.recoverable ? "RECONNECTING" : "ERROR",
-    error: `${error.code}: ${error.message}`,
+    state,
+    error: formatError(error),
+    code: error.code,
   });
+}
+
+/**
+ * 回復不能な失敗。先に片付けてから ERROR を送る。
+ * teardown() は provider.stop() 経由で STATUS IDLE を出すので、順序を逆にすると
+ * その IDLE が ERROR の文言を消して「押してもすぐ終了する」ように見える。
+ */
+async function fail(error: TranslationError): Promise<void> {
+  running = false;
+  await teardown().catch(() => {});
+  traceFail("失敗", formatError(error));
+  statusWithError("ERROR", error);
+}
+
+function toTranslationError(e: unknown): TranslationError {
+  return isTranslationError(e)
+    ? e
+    : translationError("UNKNOWN", String((e as Error)?.message ?? e));
 }
 
 async function buildPipeline(config: {
@@ -114,7 +129,17 @@ async function buildPipeline(config: {
     send("background", { type: "STATUS", state: APP_STATE[status] });
   });
 
-  provider.onError(reportError);
+  provider.onError((error) => {
+    if (!running) return; // Stop 中に出る close 由来のエラーは報告しない
+    if (error.recoverable) {
+      // Provider が自分で張り直す。文言は次の READY（error なしの STATUS）で消える。
+      statusWithError("RECONNECTING", error);
+      return;
+    }
+    // 回復不能なら running を落として片付けないと、次の Start が
+    // `if (running) return` で黙って捨てられる。
+    void fail(error);
+  });
 
   await provider.connect({
     sourceLanguage: settings.sourceLang,
@@ -159,13 +184,9 @@ async function start(config: { settings: Settings; apiKey: string }): Promise<vo
     await buildPipeline(config);
     trace("パイプライン構築完了 — 発話待ち");
   } catch (e) {
-    const error = isTranslationError(e)
-      ? e
-      : translationError("UNKNOWN", String((e as Error)?.message ?? e));
-    traceFail("Start 失敗", `${error.code}: ${error.message}`);
-    reportError(error, true);
-    running = false;
-    await teardown();
+    if (!running) return; // 接続中に Stop された。ユーザー操作なので ERROR にしない
+    // Start 中の失敗は再試行しないので、recoverable でも ERROR として確定させる
+    await fail({ ...toTranslationError(e), recoverable: false });
   }
 }
 

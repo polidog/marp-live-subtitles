@@ -9,6 +9,11 @@ export function translationError(
   return { code, message, recoverable };
 }
 
+/** popup / トレースに出す表示形式。複数箇所で同じ文字列を組み立てない。 */
+export function formatError(error: TranslationError): string {
+  return `${error.code}: ${error.message}`;
+}
+
 /** API から返ってきた文言・WebSocket close code から原因を推定する */
 export function classify(message: string, closeCode?: number): TranslationError {
   const m = message || "";

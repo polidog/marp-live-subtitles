@@ -3,6 +3,7 @@ import { isExtensionAlive } from "../extension";
 import type {
   TranscriptEvent,
   TranslationError,
+  TranslationErrorCode,
   TranslationStatus,
 } from "../translation/types";
 import type {
@@ -44,7 +45,15 @@ export type ExtensionMessage =
       latencyMs?: number;
     }
   | { type: "CLEAR" }
-  | { type: "STATUS"; state: AppState; error?: string; latencyMs?: number }
+  | {
+      type: "STATUS";
+      state: AppState;
+      /** 表示用文言。undefined なら「エラーなし」を意味する（前の文言を消す） */
+      error?: string;
+      /** popup が MIC_PERMISSION_DENIED の導線などを出すための構造化コード */
+      code?: TranslationErrorCode;
+      latencyMs?: number;
+    }
   | { type: "DEBUG_LOG"; log: DebugLog }
   // 各 context の進捗を background のコンソールに集める
   | { type: "TRACE"; context: string; line: string };

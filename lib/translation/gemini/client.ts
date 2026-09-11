@@ -1,5 +1,5 @@
 /** spec2 §11, §15 — Gemini Live API との WebSocket 接続（トランスポートのみ） */
-import { classify } from "./errors";
+import { classify, translationError } from "./errors";
 import { parseServerMessage, type GeminiServerEvent } from "./protocol";
 import type { TranslationError } from "../types";
 
@@ -48,6 +48,12 @@ export class GeminiLiveClient {
         if (this.logEvents) {
           console.debug(`[gemini] close code=${e.code} reason=${e.reason || "(なし)"}`);
         }
+        // Stop / 張り直しで自分から閉じた場合。open 前なら connect() を宙に浮かせず
+        // 中断として reject する（呼び出し側は stopped / running で無視する）。
+        if (this.closedByUs) {
+          if (!opened) reject(translationError("UNKNOWN", "接続を中断しました"));
+          return;
+        }
         if (!opened) {
           reject(
             classify(
@@ -57,7 +63,6 @@ export class GeminiLiveClient {
           );
           return;
         }
-        if (this.closedByUs) return;
         this.onCloseCb(e.code === 1000 ? undefined : classify(e.reason, e.code));
       });
     });

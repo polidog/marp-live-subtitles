@@ -7,7 +7,7 @@ import {
   openMicSiteSettings,
 } from "../../lib/audio/capture";
 import { onMessage, send } from "../../lib/messaging/messages";
-import { languageName } from "../../lib/translation/types";
+import { languageName, type TranslationErrorCode } from "../../lib/translation/types";
 import { DEFAULT_SETTINGS, getSettings, patchSettings } from "../../stores/settings";
 import type { AppState, MarpDetection, Settings } from "../../types";
 
@@ -40,6 +40,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [state, setState] = useState<AppState>("IDLE");
   const [error, setError] = useState<string>();
+  const [errorCode, setErrorCode] = useState<TranslationErrorCode>();
   const [latencyMs, setLatencyMs] = useState<number>();
   const [detection, setDetection] = useState<MarpDetection | null>(null);
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
@@ -54,18 +55,16 @@ export default function App() {
     const off = onMessage("ui", (msg) => {
       switch (msg.type) {
         case "STATUS":
+          // background が持つ状態をそのまま映す。エラーの有無もここが唯一の根拠。
           setState(msg.state);
-          // undefined で既存のエラー文言を消さない（Start / Stop で消す）
-          if (msg.error !== undefined) setError(msg.error);
+          setError(msg.error);
+          setErrorCode(msg.code);
           if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
           break;
         case "SUBTITLE":
           setInput(msg.original);
           setOutput(msg.text);
           if (msg.latencyMs != null) setLatencyMs(msg.latencyMs);
-          break;
-        case "TRANSLATION_ERROR":
-          setError(`${msg.error.code}: ${msg.error.message}`);
           break;
         case "MARP_DETECTION":
           setDetection(msg.detection);
@@ -173,10 +172,7 @@ export default function App() {
 
       <button
         style={{ ...s.button, background: running ? "#dc2626" : "#111827" }}
-        onClick={() => {
-          setError(undefined);
-          send("background", { type: running ? "STOP" : "START" });
-        }}
+        onClick={() => send("background", { type: running ? "STOP" : "START" })}
       >
         {running ? "Stop" : "Start Subtitles"}
       </button>
@@ -213,7 +209,7 @@ export default function App() {
       {error && (
         <div style={s.error}>
           {error}
-          {error.startsWith("MIC_PERMISSION_DENIED") && (
+          {errorCode === "MIC_PERMISSION_DENIED" && (
             <button style={s.link} onClick={openMicSiteSettings}>
               Chrome のサイト設定でマイクを「許可」にする
             </button>
