@@ -102,3 +102,14 @@ test("reset 後は次のターンを最初から扱える", () => {
   assert.equal(emitted.at(-1)!.text, "New subtitle");
   assert.equal(emitted.at(-1)!.status, "partial");
 });
+
+test("final のあとの入力は次の文の始まりで、前の翻訳を送り直さない", () => {
+  const { c, emitted } = setup();
+  c.handleOutput(out("Today, I'd like to introduce our new service.", true, 1200));
+  c.handleInput(out("次に", false, 1300));
+
+  const last = emitted.at(-1)!;
+  assert.equal(last.text, "");
+  assert.equal(last.original, "次に");
+  assert.equal(last.status, "partial");
+});

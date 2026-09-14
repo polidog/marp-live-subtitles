@@ -48,6 +48,12 @@ export class TranslationCommitter {
     const text = event.text.trim();
     if (!text) return;
 
+    // 前の文が確定したあとの入力は次の文の始まり。前の翻訳を持ち回ると
+    // 字幕が消えたあとにその翻訳がもう一度出てしまうので、ここで捨てる。
+    if (this.status === "final") {
+      this.text = "";
+      this.status = "partial";
+    }
     this.original = text;
     this.emit();
   }

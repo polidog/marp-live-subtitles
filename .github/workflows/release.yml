@@ -1,0 +1,33 @@
+# GitHub Release を publish すると Chrome Web Store へ審査に出し、zip を Release に添付する。
+# バージョンは Release のタグ (v0.1.1) から取る。package.json の version は触らなくてよい。
+name: release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+      - run: pnpm zip
+      - run: pnpm exec wxt submit --chrome-zip .output/*-chrome.zip
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+      - run: gh release upload "$GITHUB_REF_NAME" .output/*-chrome.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
